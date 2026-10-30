@@ -54,46 +54,52 @@ val RobotoMonoFamily = FontFamily(
 
 enum class AppFontStyle(
     val titleBn: String,
-    val sampleText: String,
-    val displayFamily: FontFamily,
-    val bodyFamily: FontFamily
+    val sampleText: String
 ) {
     HIND_SILIGURI(
         titleBn = "হিন্দ শিলিগুড়ি (আধুনিক বাংলা)",
-        sampleText = "নকশি পিডিএফ • Nokshi PDF Studio",
-        displayFamily = HindSiliguriFamily,
-        bodyFamily = HindSiliguriFamily
+        sampleText = "নকশি পিডিএফ • Nokshi PDF Studio"
     ),
     NOTO_SERIF_BENGALI(
         titleBn = "নোটো সেরিফ (সাহিত্যিক ছাপা)",
-        sampleText = "নকশি পিডিএফ • Editorial Serif",
-        displayFamily = NotoSerifBengaliFamily,
-        bodyFamily = NotoSerifBengaliFamily
+        sampleText = "নকশি পিডিএফ • Editorial Serif"
     ),
     ATMA_ARTISAN(
         titleBn = "আত্মা নকশি (নান্দনিক স্টাইল)",
-        sampleText = "নকশি পিডিএফ • Artisan Handcrafted",
-        displayFamily = AtmaFamily,
-        bodyFamily = HindSiliguriFamily
+        sampleText = "নকশি পিডিএফ • Artisan Handcrafted"
     ),
     PLUS_JAKARTA(
         titleBn = "প্লাস জাকার্তা স্যান্স",
-        sampleText = "Clean Geometric • আধুনিক ডকুমেন্ট",
-        displayFamily = PlusJakartaFamily,
-        bodyFamily = PlusJakartaFamily
+        sampleText = "Clean Geometric • আধুনিক ডকুমেন্ট"
     ),
     LORA_EDITORIAL(
         titleBn = "লোরা ক্ল্যাসিক বুক",
-        sampleText = "Classic Book Typography • বইয়ের ছাঁদ",
-        displayFamily = LoraFamily,
-        bodyFamily = LoraFamily
+        sampleText = "Classic Book Typography • বইয়ের ছাঁদ"
     ),
     ROBOTO_MONO(
         titleBn = "রোবোটো মনোস্পেস",
-        sampleText = "Technical Precision • 0123456789",
-        displayFamily = RobotoMonoFamily,
-        bodyFamily = RobotoMonoFamily
-    )
+        sampleText = "Technical Precision • 0123456789"
+    );
+
+    val displayFamily: FontFamily
+        get() = when (this) {
+            HIND_SILIGURI -> HindSiliguriFamily
+            NOTO_SERIF_BENGALI -> NotoSerifBengaliFamily
+            ATMA_ARTISAN -> AtmaFamily
+            PLUS_JAKARTA -> PlusJakartaFamily
+            LORA_EDITORIAL -> LoraFamily
+            ROBOTO_MONO -> RobotoMonoFamily
+        }
+
+    val bodyFamily: FontFamily
+        get() = when (this) {
+            HIND_SILIGURI -> HindSiliguriFamily
+            NOTO_SERIF_BENGALI -> NotoSerifBengaliFamily
+            ATMA_ARTISAN -> HindSiliguriFamily
+            PLUS_JAKARTA -> PlusJakartaFamily
+            LORA_EDITORIAL -> LoraFamily
+            ROBOTO_MONO -> RobotoMonoFamily
+        }
 }
 
 fun buildAppTypography(style: AppFontStyle): Typography {
@@ -117,4 +123,4 @@ fun buildAppTypography(style: AppFontStyle): Typography {
     )
 }
 
-val Typography = buildAppTypography(AppFontStyle.HIND_SILIGURI)
+val Typography: Typography by lazy { buildAppTypography(AppFontStyle.HIND_SILIGURI) }

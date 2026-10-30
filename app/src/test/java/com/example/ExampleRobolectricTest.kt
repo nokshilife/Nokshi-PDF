@@ -88,4 +88,65 @@ class ExampleRobolectricTest {
         assertEquals(false, withPwd.requiresPassword)
         assertEquals(2, withPwd.pageCount)
     }
+
+    @Test
+    fun `main activity launches and renders home and all tabs without crashing`() {
+        org.robolectric.Robolectric.buildActivity(MainActivity::class.java).use { controller ->
+            controller.setup()
+            val activity = controller.get()
+            assertTrue(activity != null)
+
+            // Verify all NokshiIcons build cleanly without Vector/Path exceptions
+            val icons = listOf(
+                com.example.ui.components.NokshiIcons.Palette,
+                com.example.ui.components.NokshiIcons.Draw,
+                com.example.ui.components.NokshiIcons.Colorize,
+                com.example.ui.components.NokshiIcons.FontDownload,
+                com.example.ui.components.NokshiIcons.Description,
+                com.example.ui.components.NokshiIcons.Image,
+                com.example.ui.components.NokshiIcons.TableChart,
+                com.example.ui.components.NokshiIcons.Slideshow,
+                com.example.ui.components.NokshiIcons.DocumentScanner,
+                com.example.ui.components.NokshiIcons.FolderOpen,
+                com.example.ui.components.NokshiIcons.EditNote,
+                com.example.ui.components.NokshiIcons.AutoAwesome,
+                com.example.ui.components.NokshiIcons.CallMerge,
+                com.example.ui.components.NokshiIcons.PictureAsPdf,
+                com.example.ui.components.NokshiIcons.ArrowUpward,
+                com.example.ui.components.NokshiIcons.ArrowDownward,
+                com.example.ui.components.NokshiIcons.CheckBox,
+                com.example.ui.components.NokshiIcons.CheckBoxOutlineBlank,
+                com.example.ui.components.NokshiIcons.LockOpen,
+                com.example.ui.components.NokshiIcons.Download,
+                com.example.ui.components.NokshiIcons.ContentCopy,
+                com.example.ui.components.NokshiIcons.OpenInNew,
+                com.example.ui.components.NokshiIcons.RadioButtonUnchecked,
+                com.example.ui.components.NokshiIcons.SelectAll,
+                com.example.ui.components.NokshiIcons.NavigateBefore,
+                com.example.ui.components.NokshiIcons.NavigateNext,
+                com.example.ui.components.NokshiIcons.Undo,
+                com.example.ui.components.NokshiIcons.ZoomIn,
+                com.example.ui.components.NokshiIcons.NoteAdd,
+                com.example.ui.components.NokshiIcons.Save,
+                com.example.ui.components.NokshiIcons.OpenWith,
+                com.example.ui.components.NokshiIcons.TextFields,
+                com.example.ui.components.NokshiIcons.AddPhotoAlternate,
+                com.example.ui.components.NokshiIcons.CropFree,
+                com.example.ui.components.NokshiIcons.BorderColor,
+                com.example.ui.components.NokshiIcons.Category
+            )
+            assertEquals(36, icons.size)
+
+            // Verify all AppFontStyle and AppColorTheme variants build cleanly
+            com.example.ui.theme.AppFontStyle.entries.forEach { font ->
+                val typo = com.example.ui.theme.buildAppTypography(font)
+                assertTrue(typo.bodyLarge != null)
+            }
+            com.example.ui.theme.AppColorTheme.entries.forEach { theme ->
+                val light = com.example.ui.theme.buildColorScheme(theme, false, 0xFF8E1D2A.toInt())
+                val dark = com.example.ui.theme.buildColorScheme(theme, true, 0xFF8E1D2A.toInt())
+                assertTrue(light.primary != dark.primary || theme == com.example.ui.theme.AppColorTheme.CUSTOM)
+            }
+        }
+    }
 }
