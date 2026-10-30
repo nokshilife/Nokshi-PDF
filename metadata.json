@@ -1,0 +1,6 @@
+{
+  "name": "Nokshi PDF",
+  "description": "অল-ইন-ওয়ান বাংলা ও ইংরেজি PDF কনভার্টার, এডিটর, মার্জার, পাসওয়ার্ড লকার, সিগনেচার লাইব্রেরী এবং OCR টুল।",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,29 @@
+<resources>
+    <string name="app_name">Nokshi PDF</string>
+    <string name="app_subtitle">নকশি পিডিএফ স্টুডিও • অল-ইন-ওয়ান এডিটর ও কনভার্টার</string>
+    <string name="nav_home">হোম</string>
+    <string name="nav_tools">টুলস</string>
+    <string name="nav_signatures">সিগনেচার</string>
+    <string name="nav_customize">থিম ও ফন্ট</string>
+    <string name="open_pdf">PDF ওপেন ও এডিট</string>
+    <string name="convert_doc">ডকুমেন্ট → PDF</string>
+    <string name="convert_image">ইমেজ → PDF</string>
+    <string name="convert_excel">এক্সেল → PDF</string>
+    <string name="convert_ppt">প্রেজেন্টেশন → PDF</string>
+    <string name="merge_pdfs">PDF মার্জ করুন</string>
+    <string name="protect_pdf">পাসওয়ার্ড সুরক্ষা</string>
+    <string name="pdf_to_image">PDF → ইমেজ</string>
+    <string name="ocr_lens">OCR (Lens এক্সট্রাক্ট)</string>
+    <string name="create_sample">নমুনা PDF তৈরি</string>
+    <string name="write_doc_pdf">নতুন ডকুমেন্ট লিখুন</string>
+    <string name="recent_files">সাম্প্রতিক ও ওয়ার্কস্পেস PDF</string>
+    <string name="empty_files_title">এখনও কোনো PDF যোগ করা হয়নি</string>
+    <string name="empty_files_desc">যেকোনো ডকুমেন্ট, ইমেজ, এক্সেল বা পাওয়ারপয়েন্ট ফাইল কনভার্ট করুন অথবা সরাসরি PDF ওপেন করে এডিট শুরু করুন।</string>
+    <string name="signature_library_title">নিজস্ব সিগনেচার লাইব্রেরী</string>
+    <string name="signature_add_new">নতুন সিগনেচার আঁকুন</string>
+    <string name="theme_font_title">কালার থিম ও ফন্ট কাস্টমাইজেশন</string>
+    <string name="ocr_window_title">OCR টেক্সট এক্সট্রাক্ট উইন্ডো</string>
+    <string name="open_in_google_lens">Google Lens-এ ইমেজ খুলুন</string>
+    <string name="copy_selected_text">সিলেক্ট করা অংশ কপি</string>
+    <string name="copy_all_text">সম্পূর্ণ টেক্সট কপি</string>
+</resources>
