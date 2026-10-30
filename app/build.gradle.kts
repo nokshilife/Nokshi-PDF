@@ -68,12 +68,6 @@ android {
     includeInApk = false
     includeInBundle = true
   }
-  packaging {
-    resources {
-      excludes += "/org/bouncycastle/pqc/**"
-      excludes += "META-INF/DEPENDENCIES"
-    }
-  }
 }
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
