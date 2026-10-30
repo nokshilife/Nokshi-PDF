@@ -24,7 +24,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
@@ -57,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.example.engine.ConvertedPageImage
+import com.example.ui.components.NokshiIcons
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -112,7 +112,7 @@ fun PdfToImageScreen(
                             .padding(horizontal = 16.dp, vertical = 10.dp)
                             .testTag("save_all_images_button")
                     ) {
-                        Icon(Icons.Default.Download, contentDescription = null)
+                        Icon(NokshiIcons.Download, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text("সবগুলো পেজ গ্যালারিতে সেভ করুন (${images.size}টি)")
                     }
@@ -232,7 +232,7 @@ fun PdfToImageScreen(
                                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                         modifier = Modifier.weight(1f)
                                     ) {
-                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Icon(NokshiIcons.Download, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(Modifier.width(4.dp))
                                         Text("সেভ")
                                     }

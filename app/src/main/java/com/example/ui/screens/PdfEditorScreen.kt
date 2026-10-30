@@ -37,25 +37,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.NavigateBefore
-import androidx.compose.material.icons.automirrored.filled.NavigateNext
-import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material.icons.filled.BorderColor
-import androidx.compose.material.icons.filled.Category
-import androidx.compose.material.icons.filled.CropFree
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.DocumentScanner
-import androidx.compose.material.icons.filled.Draw
-import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.NoteAdd
-import androidx.compose.material.icons.filled.OpenWith
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.TextFields
-import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -120,6 +103,7 @@ import com.example.engine.NormPoint
 import com.example.engine.PageEditItem
 import com.example.engine.ShapeType
 import com.example.ui.components.ColorPickerDialog
+import com.example.ui.components.NokshiIcons
 import com.example.ui.components.SignatureLibraryContent
 import java.io.File
 import java.io.FileOutputStream
@@ -272,19 +256,19 @@ fun PdfEditorScreen(
                         enabled = edits.isNotEmpty(),
                         modifier = Modifier.testTag("editor_undo_button")
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Undo, contentDescription = "আনডু")
+                        Icon(NokshiIcons.Undo, contentDescription = "আনডু")
                     }
                     IconButton(
                         onClick = onRunOcrOnPdf,
                         modifier = Modifier.testTag("editor_ocr_button")
                     ) {
-                        Icon(Icons.Default.DocumentScanner, contentDescription = "OCR এক্সট্রাক্ট")
+                        Icon(NokshiIcons.DocumentScanner, contentDescription = "OCR এক্সট্রাক্ট")
                     }
                     IconButton(
                         onClick = onOpenPdfToImage,
                         modifier = Modifier.testTag("editor_pdf_to_img_button")
                     ) {
-                        Icon(Icons.Default.Image, contentDescription = "PDF থেকে ইমেজ")
+                        Icon(NokshiIcons.Image, contentDescription = "PDF থেকে ইমেজ")
                     }
                     IconButton(
                         onClick = onRequestPasswordDialog,
@@ -300,7 +284,7 @@ fun PdfEditorScreen(
                             .padding(end = 6.dp)
                             .testTag("editor_save_button")
                     ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(NokshiIcons.Save, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(4.dp))
                         Text("সেভ")
                     }
@@ -395,7 +379,7 @@ fun PdfEditorScreen(
                             onClick = { if (currentPageIndex > 0) onSelectPage(currentPageIndex - 1) },
                             enabled = currentPageIndex > 0
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.NavigateBefore, contentDescription = "আগের পেজ")
+                            Icon(NokshiIcons.NavigateBefore, contentDescription = "আগের পেজ")
                         }
                         Text(
                             text = "পেজ ${currentPageIndex + 1} / $totalPages",
@@ -405,7 +389,7 @@ fun PdfEditorScreen(
                             onClick = { if (currentPageIndex < totalPages - 1) onSelectPage(currentPageIndex + 1) },
                             enabled = currentPageIndex < totalPages - 1
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.NavigateNext, contentDescription = "পরের পেজ")
+                            Icon(NokshiIcons.NavigateNext, contentDescription = "পরের পেজ")
                         }
                     }
 
@@ -423,14 +407,14 @@ fun PdfEditorScreen(
                             },
                             label = { Text("${(zoomMultiplier * 100).roundToInt()}%") },
                             leadingIcon = {
-                                Icon(Icons.Default.ZoomIn, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(NokshiIcons.ZoomIn, contentDescription = null, modifier = Modifier.size(16.dp))
                             }
                         )
                         AssistChip(
                             onClick = onAddBlankPage,
                             label = { Text("+ নতুন পেজ") },
                             leadingIcon = {
-                                Icon(Icons.Default.NoteAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Icon(NokshiIcons.NoteAdd, contentDescription = null, modifier = Modifier.size(16.dp))
                             }
                         )
                     }
@@ -1064,7 +1048,7 @@ private fun EditorBottomToolDock(
                             AssistChip(onClick = { onResizeSelected(-0.04f) }, label = { Text("ছোট -") })
                             AssistChip(onClick = { onResizeSelected(0.04f) }, label = { Text("বড় +") })
                             IconButton(onClick = { onOpenColorPicker("MAIN") }) {
-                                Icon(Icons.Default.Palette, contentDescription = "রঙ পরিবর্তন")
+                                Icon(NokshiIcons.Palette, contentDescription = "রঙ পরিবর্তন")
                             }
                             IconButton(onClick = onDeleteSelected) {
                                 Icon(
@@ -1157,7 +1141,7 @@ private fun EditorBottomToolDock(
                             )
                         }
                         IconButton(onClick = { onOpenColorPicker("HIGHLIGHT") }) {
-                            Icon(Icons.Default.Palette, contentDescription = "কালার পিকার")
+                            Icon(NokshiIcons.Palette, contentDescription = "কালার পিকার")
                         }
                         Slider(
                             value = highlighterThicknessNorm,
@@ -1205,14 +1189,14 @@ private fun EditorBottomToolDock(
             ) {
                 items(EditorTool.entries) { tool ->
                     val icon = when (tool) {
-                        EditorTool.SELECT -> Icons.Default.OpenWith
-                        EditorTool.EDIT_TEXT -> Icons.Default.EditNote
-                        EditorTool.ADD_TEXT -> Icons.Default.TextFields
-                        EditorTool.ADD_IMAGE -> Icons.Default.AddPhotoAlternate
-                        EditorTool.SQUARE_ERASE -> Icons.Default.CropFree
-                        EditorTool.HIGHLIGHTER -> Icons.Default.BorderColor
-                        EditorTool.SHAPE -> Icons.Default.Category
-                        EditorTool.SIGNATURE -> Icons.Default.Draw
+                        EditorTool.SELECT -> NokshiIcons.OpenWith
+                        EditorTool.EDIT_TEXT -> NokshiIcons.EditNote
+                        EditorTool.ADD_TEXT -> NokshiIcons.TextFields
+                        EditorTool.ADD_IMAGE -> NokshiIcons.AddPhotoAlternate
+                        EditorTool.SQUARE_ERASE -> NokshiIcons.CropFree
+                        EditorTool.HIGHLIGHTER -> NokshiIcons.BorderColor
+                        EditorTool.SHAPE -> NokshiIcons.Category
+                        EditorTool.SIGNATURE -> NokshiIcons.Draw
                     }
                     val label = if (tool == EditorTool.EDIT_TEXT && detectedCount > 0) {
                         "${tool.labelBn} ($detectedCount)"

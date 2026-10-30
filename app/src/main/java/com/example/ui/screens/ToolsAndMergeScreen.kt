@@ -17,18 +17,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowDownward
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.CallMerge
-import androidx.compose.material.icons.filled.CheckBox
-import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.DocumentScanner
-import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Slideshow
-import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -54,6 +43,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.WorkspacePdfEntity
+import com.example.ui.components.NokshiIcons
 
 @Composable
 fun ToolsAndMergeScreen(
@@ -97,7 +87,7 @@ fun ToolsAndMergeScreen(
                     ToolActionTile(
                         title = "ডকুমেন্ট → PDF",
                         subtitle = "DOCX, TXT, HTML",
-                        icon = Icons.Default.Description,
+                        icon = NokshiIcons.Description,
                         onClick = onPickDocumentToPdf,
                         modifier = Modifier.weight(1f),
                         tag = "tools_doc_to_pdf"
@@ -105,7 +95,7 @@ fun ToolsAndMergeScreen(
                     ToolActionTile(
                         title = "ইমেজ → PDF",
                         subtitle = "JPG, PNG, WEBP",
-                        icon = Icons.Default.Image,
+                        icon = NokshiIcons.Image,
                         onClick = onPickImagesToPdf,
                         modifier = Modifier.weight(1f),
                         tag = "tools_img_to_pdf"
@@ -115,7 +105,7 @@ fun ToolsAndMergeScreen(
                     ToolActionTile(
                         title = "এক্সেল → PDF",
                         subtitle = "XLSX, CSV শীট",
-                        icon = Icons.Default.TableChart,
+                        icon = NokshiIcons.TableChart,
                         onClick = onPickExcelToPdf,
                         modifier = Modifier.weight(1f),
                         tag = "tools_excel_to_pdf"
@@ -123,7 +113,7 @@ fun ToolsAndMergeScreen(
                     ToolActionTile(
                         title = "প্রেজেন্টেশন → PDF",
                         subtitle = "PPTX স্লাইড",
-                        icon = Icons.Default.Slideshow,
+                        icon = NokshiIcons.Slideshow,
                         onClick = onPickPptToPdf,
                         modifier = Modifier.weight(1f),
                         tag = "tools_ppt_to_pdf"
@@ -133,7 +123,7 @@ fun ToolsAndMergeScreen(
                     ToolActionTile(
                         title = "OCR টেক্সট এক্সট্রাক্ট",
                         subtitle = "ইমেজ + Google Lens",
-                        icon = Icons.Default.DocumentScanner,
+                        icon = NokshiIcons.DocumentScanner,
                         onClick = onPickPdfForOcr,
                         modifier = Modifier.weight(1f),
                         tag = "tools_ocr_lens"
@@ -153,7 +143,7 @@ fun ToolsAndMergeScreen(
                         .fillMaxWidth()
                         .testTag("tools_pdf_to_img_button")
                 ) {
-                    Icon(Icons.Default.Image, contentDescription = null)
+                    Icon(NokshiIcons.Image, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text("যেকোনো PDF থেকে হাই-কোয়ালিটি Image কনভার্ট করুন")
                 }
@@ -179,7 +169,7 @@ fun ToolsAndMergeScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.CallMerge, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Icon(NokshiIcons.CallMerge, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
                             Text("PDF মার্জ স্টুডিও", style = MaterialTheme.typography.titleLarge)
                         }
@@ -219,7 +209,7 @@ fun ToolsAndMergeScreen(
                             .fillMaxWidth()
                             .testTag("execute_merge_button")
                     ) {
-                        Icon(Icons.Default.CallMerge, contentDescription = null)
+                        Icon(NokshiIcons.CallMerge, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text("মার্জ করুন (${orderedSelectedEntities.size}টি ফাইল নির্বাচিত)")
                     }
@@ -261,7 +251,7 @@ fun ToolsAndMergeScreen(
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                     ) {
                         Icon(
-                            imageVector = if (isSelected) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank,
+                            imageVector = if (isSelected) NokshiIcons.CheckBox else NokshiIcons.CheckBoxOutlineBlank,
                             contentDescription = null,
                             tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                         )
@@ -288,7 +278,7 @@ fun ToolsAndMergeScreen(
                                     selectedForMerge[orderIdx] = prev
                                 }
                             ) {
-                                Icon(Icons.Default.ArrowUpward, contentDescription = "ওপরে নিন", modifier = Modifier.size(18.dp))
+                                Icon(NokshiIcons.ArrowUpward, contentDescription = "ওপরে নিন", modifier = Modifier.size(18.dp))
                             }
                             IconButton(
                                 enabled = orderIdx < selectedForMerge.lastIndex,
@@ -298,7 +288,7 @@ fun ToolsAndMergeScreen(
                                     selectedForMerge[orderIdx] = next
                                 }
                             ) {
-                                Icon(Icons.Default.ArrowDownward, contentDescription = "নিচে নিন", modifier = Modifier.size(18.dp))
+                                Icon(NokshiIcons.ArrowDownward, contentDescription = "নিচে নিন", modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -364,7 +354,7 @@ fun PasswordVaultDialog(
         title = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
-                    imageVector = if (pdfEntity.isPasswordProtected) Icons.Default.LockOpen else Icons.Default.Lock,
+                    imageVector = if (pdfEntity.isPasswordProtected) NokshiIcons.LockOpen else Icons.Default.Lock,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary
                 )

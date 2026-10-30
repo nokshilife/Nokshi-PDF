@@ -21,9 +21,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Colorize
-import androidx.compose.material.icons.filled.FontDownload
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -47,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.data.UserThemeSettings
 import com.example.ui.components.ColorPickerDialog
+import com.example.ui.components.NokshiIcons
 import com.example.ui.theme.AppColorTheme
 import com.example.ui.theme.AppFontStyle
 import com.example.ui.theme.ThemeMode
@@ -121,7 +119,7 @@ fun ThemeCustomizeScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(NokshiIcons.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(8.dp))
                     Text("অ্যাপের কালার থিম", style = MaterialTheme.typography.titleMedium)
                 }
@@ -129,7 +127,7 @@ fun ThemeCustomizeScreen(
                     onClick = { showCustomColorPicker = true },
                     modifier = Modifier.testTag("pick_custom_theme_color_button")
                 ) {
-                    Icon(Icons.Default.Colorize, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Icon(NokshiIcons.Colorize, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("কাস্টম রঙ")
                 }
@@ -216,7 +214,7 @@ fun ThemeCustomizeScreen(
         item {
             Spacer(Modifier.height(4.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.FontDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Icon(NokshiIcons.FontDownload, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(8.dp))
                 Text("অ্যাপের ফন্ট স্টাইল", style = MaterialTheme.typography.titleMedium)
             }

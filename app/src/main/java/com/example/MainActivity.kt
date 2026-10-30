@@ -22,13 +22,9 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.outlined.Build
-import androidx.compose.material.icons.outlined.Draw
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -59,6 +55,7 @@ import com.example.ui.MainTab
 import com.example.ui.MainViewModel
 import com.example.ui.PendingProtectedAction
 import com.example.ui.SubRoute
+import com.example.ui.components.NokshiIcons
 import com.example.ui.components.SignatureLibraryContent
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.OcrResultScreen
@@ -243,7 +240,7 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
                                     onClick = { vm.selectTab(MainTab.SIGNATURES) },
                                     icon = {
                                         Icon(
-                                            if (uiState.activeTab == MainTab.SIGNATURES) Icons.Filled.Draw else Icons.Outlined.Draw,
+                                            NokshiIcons.Draw,
                                             contentDescription = "সিগনেচার লাইব্রেরী"
                                         )
                                     },
@@ -255,7 +252,7 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
                                     onClick = { vm.selectTab(MainTab.CUSTOMIZE) },
                                     icon = {
                                         Icon(
-                                            if (uiState.activeTab == MainTab.CUSTOMIZE) Icons.Filled.Palette else Icons.Outlined.Palette,
+                                            NokshiIcons.Palette,
                                             contentDescription = "থিম ও ফন্ট"
                                         )
                                     },
@@ -288,13 +285,13 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
                                 NavigationRailItem(
                                     selected = uiState.activeTab == MainTab.SIGNATURES,
                                     onClick = { vm.selectTab(MainTab.SIGNATURES) },
-                                    icon = { Icon(Icons.Filled.Draw, contentDescription = "সিগনেচার") },
+                                    icon = { Icon(NokshiIcons.Draw, contentDescription = "সিগনেচার") },
                                     label = { Text("সিগনেচার") }
                                 )
                                 NavigationRailItem(
                                     selected = uiState.activeTab == MainTab.CUSTOMIZE,
                                     onClick = { vm.selectTab(MainTab.CUSTOMIZE) },
-                                    icon = { Icon(Icons.Filled.Palette, contentDescription = "থিম ও ফন্ট") },
+                                    icon = { Icon(NokshiIcons.Palette, contentDescription = "থিম ও ফন্ট") },
                                     label = { Text("থিম ও ফন্ট") }
                                 )
                             }

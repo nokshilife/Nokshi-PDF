@@ -28,11 +28,6 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.DocumentScanner
-import androidx.compose.material.icons.filled.OpenInNew
-import androidx.compose.material.icons.filled.RadioButtonUnchecked
-import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -70,6 +65,7 @@ import coil.compose.AsyncImage
 import com.example.engine.OcrLensEngine
 import com.example.engine.OcrPageResult
 import com.example.engine.OcrStepProgress
+import com.example.ui.components.NokshiIcons
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -136,7 +132,7 @@ fun OcrResultScreen(
                             },
                             modifier = Modifier.testTag("ocr_select_all_button")
                         ) {
-                            Icon(Icons.Default.SelectAll, contentDescription = "সব সিলেক্ট")
+                            Icon(NokshiIcons.SelectAll, contentDescription = "সব সিলেক্ট")
                         }
                     }
                 }
@@ -166,7 +162,7 @@ fun OcrResultScreen(
                                 .weight(1f)
                                 .testTag("ocr_copy_all_button")
                         ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(NokshiIcons.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("সব কপি করুন")
                         }
@@ -218,7 +214,7 @@ fun OcrResultScreen(
                     ) {
                         CircularProgressIndicator()
                         Icon(
-                            imageVector = Icons.Default.DocumentScanner,
+                            imageVector = NokshiIcons.DocumentScanner,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(40.dp)
@@ -320,7 +316,7 @@ fun OcrResultScreen(
                                         },
                                         modifier = Modifier.testTag("open_google_lens_button")
                                     ) {
-                                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Icon(NokshiIcons.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(Modifier.width(6.dp))
                                         Text("Google Lens-এ ইমেজ খুলুন")
                                     }
@@ -384,7 +380,7 @@ fun OcrResultScreen(
                                     .padding(horizontal = 14.dp, vertical = 12.dp)
                             ) {
                                 Icon(
-                                    imageVector = if (isChosen) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
+                                    imageVector = if (isChosen) Icons.Default.CheckCircle else NokshiIcons.RadioButtonUnchecked,
                                     contentDescription = null,
                                     tint = if (isChosen) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                                 )
@@ -409,7 +405,7 @@ fun OcrResultScreen(
                                     }
                                 ) {
                                     Icon(
-                                        Icons.Default.ContentCopy,
+                                        NokshiIcons.ContentCopy,
                                         contentDescription = "কপি করুন",
                                         modifier = Modifier.size(18.dp)
                                     )

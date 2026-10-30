@@ -22,20 +22,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CallMerge
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Slideshow
-import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -69,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.example.R
 import com.example.data.WorkspacePdfEntity
+import com.example.ui.components.NokshiIcons
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -170,7 +161,7 @@ fun HomeScreen(
                                 .weight(1f)
                                 .testTag("hero_open_pdf_button")
                         ) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(NokshiIcons.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("PDF ওপেন করুন", fontWeight = FontWeight.Bold)
                         }
@@ -180,7 +171,7 @@ fun HomeScreen(
                                 .weight(1f)
                                 .testTag("hero_write_pdf_button")
                         ) {
-                            Icon(Icons.Default.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(NokshiIcons.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(6.dp))
                             Text("ডকুমেন্ট লিখুন")
                         }
@@ -203,7 +194,7 @@ fun HomeScreen(
                     ConvertFormatCard(
                         title = "ডকুমেন্ট",
                         subtitle = "DOCX, TXT, RTF",
-                        icon = Icons.Default.Description,
+                        icon = NokshiIcons.Description,
                         accent = MaterialTheme.colorScheme.primary,
                         onClick = onConvertDocumentPicker,
                         modifier = Modifier.weight(1f),
@@ -212,7 +203,7 @@ fun HomeScreen(
                     ConvertFormatCard(
                         title = "ইমেজ",
                         subtitle = "JPG, PNG → PDF",
-                        icon = Icons.Default.Image,
+                        icon = NokshiIcons.Image,
                         accent = MaterialTheme.colorScheme.secondary,
                         onClick = onConvertImagePicker,
                         modifier = Modifier.weight(1f),
@@ -226,7 +217,7 @@ fun HomeScreen(
                     ConvertFormatCard(
                         title = "এক্সেল শীট",
                         subtitle = "XLSX, CSV টেবিল",
-                        icon = Icons.Default.TableChart,
+                        icon = NokshiIcons.TableChart,
                         accent = Color(0xFF0F6E56),
                         onClick = onConvertExcelPicker,
                         modifier = Modifier.weight(1f),
@@ -235,7 +226,7 @@ fun HomeScreen(
                     ConvertFormatCard(
                         title = "পাওয়ারপয়েন্ট",
                         subtitle = "PPTX স্লাইড",
-                        icon = Icons.Default.Slideshow,
+                        icon = NokshiIcons.Slideshow,
                         accent = Color(0xFFB45309),
                         onClick = onConvertPptPicker,
                         modifier = Modifier.weight(1f),
@@ -255,7 +246,7 @@ fun HomeScreen(
                             onClick = onNavigateToMergeTab,
                             label = { Text("PDF মার্জ করুন") },
                             leadingIcon = {
-                                Icon(Icons.Default.CallMerge, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(NokshiIcons.CallMerge, contentDescription = null, modifier = Modifier.size(18.dp))
                             },
                             modifier = Modifier.testTag("quick_merge_chip")
                         )
@@ -265,7 +256,7 @@ fun HomeScreen(
                             onClick = onCreateSamplePdf,
                             label = { Text("নমুনা PDF তৈরি করুন") },
                             leadingIcon = {
-                                Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(NokshiIcons.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
                             },
                             modifier = Modifier.testTag("quick_sample_pdf_chip")
                         )
@@ -307,7 +298,7 @@ fun HomeScreen(
                             .padding(26.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.PictureAsPdf,
+                            imageVector = NokshiIcons.PictureAsPdf,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(44.dp)
@@ -325,7 +316,7 @@ fun HomeScreen(
                             onClick = onCreateSamplePdf,
                             modifier = Modifier.testTag("empty_state_sample_button")
                         ) {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                            Icon(NokshiIcons.AutoAwesome, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text("নমুনা নকশি PDF তৈরি করুন")
                         }
@@ -446,7 +437,7 @@ private fun WorkspacePdfCard(
                         .background(MaterialTheme.colorScheme.primaryContainer)
                 ) {
                     Icon(
-                        imageVector = if (pdf.isPasswordProtected) Icons.Default.Lock else Icons.Default.PictureAsPdf,
+                        imageVector = if (pdf.isPasswordProtected) Icons.Default.Lock else NokshiIcons.PictureAsPdf,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -495,12 +486,12 @@ private fun WorkspacePdfCard(
                     AssistChip(
                         onClick = onOcr,
                         label = { Text("OCR") },
-                        leadingIcon = { Icon(Icons.Default.DocumentScanner, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        leadingIcon = { Icon(NokshiIcons.DocumentScanner, contentDescription = null, modifier = Modifier.size(16.dp)) }
                     )
                     AssistChip(
                         onClick = onPdfToImages,
                         label = { Text("ইমেজ") },
-                        leadingIcon = { Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        leadingIcon = { Icon(NokshiIcons.Image, contentDescription = null, modifier = Modifier.size(16.dp)) }
                     )
                 }
                 Row {
@@ -512,7 +503,7 @@ private fun WorkspacePdfCard(
                     }
                     IconButton(onClick = onDelete, modifier = Modifier.size(38.dp)) {
                         Icon(
-                            Icons.Default.DeleteOutline,
+                            Icons.Default.Delete,
                             contentDescription = "মুছে ফেলুন",
                             tint = MaterialTheme.colorScheme.error,
                             modifier = Modifier.size(19.dp)

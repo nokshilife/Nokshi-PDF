@@ -95,7 +95,7 @@ androidx-credentials = { group = "androidx.credentials", name = "credentials", v
 androidx-credentials-play-services = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
 googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
 pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version = "2.0.27.0" }
-mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version = "16.0.1" }
+mlkit-text-recognition = { group = "com.google.android.gms", name = "play-services-mlkit-text-recognition", version = "19.0.1" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "kotlinxCoroutinesCore" }
 
 

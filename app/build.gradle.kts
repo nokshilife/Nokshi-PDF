@@ -68,6 +68,12 @@ android {
     includeInApk = false
     includeInBundle = true
   }
+  packaging {
+    resources {
+      excludes += "/org/bouncycastle/pqc/**"
+      excludes += "META-INF/DEPENDENCIES"
+    }
+  }
 }
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files
@@ -92,7 +98,7 @@ dependencies {
   // implementation(libs.androidx.camera.lifecycle)
   // implementation(libs.androidx.camera.view)
   implementation(libs.androidx.compose.material.icons.core)
-  implementation(libs.androidx.compose.material.icons.extended)
+  // implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.compose.material3)
   implementation(libs.androidx.compose.ui)
   implementation(libs.androidx.compose.ui.graphics)

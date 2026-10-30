@@ -29,9 +29,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.DeleteOutline
-import androidx.compose.material.icons.filled.Draw
-import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -142,7 +140,7 @@ fun SignatureLibraryContent(
                         .padding(28.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Draw,
+                        imageVector = NokshiIcons.Draw,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(46.dp)
@@ -157,7 +155,7 @@ fun SignatureLibraryContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     FilledTonalButton(onClick = { showCreatePad = true }) {
-                        Icon(Icons.Default.Draw, contentDescription = null)
+                        Icon(NokshiIcons.Draw, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text("এখনই সিগনেচার আঁকুন")
                     }
@@ -218,7 +216,7 @@ fun SignatureLibraryContent(
                                     modifier = Modifier.size(36.dp)
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.DeleteOutline,
+                                        imageVector = Icons.Default.Delete,
                                         contentDescription = "সিগনেচার মুছুন",
                                         tint = MaterialTheme.colorScheme.error,
                                         modifier = Modifier.size(20.dp)
@@ -311,7 +309,7 @@ fun SignaturePadDialog(
                         )
                     }
                     IconButton(onClick = { showColorPicker = true }) {
-                        Icon(Icons.Default.Palette, contentDescription = "কালার পিকার")
+                        Icon(NokshiIcons.Palette, contentDescription = "কালার পিকার")
                     }
                 }
 
