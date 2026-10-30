@@ -5,8 +5,10 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import com.example.ui.i18n.AppLanguage
 
 enum class AppColorTheme(
+    val titleEn: String,
     val titleBn: String,
     val subtitle: String,
     val previewPrimary: Color,
@@ -14,6 +16,7 @@ enum class AppColorTheme(
     val previewTertiary: Color
 ) {
     NOKSHI_CRIMSON(
+        titleEn = "Nokshi Maroon (Default)",
         titleBn = "নকশি মেরুন (ডিফল্ট)",
         subtitle = "Nokshi Kantha Heritage",
         previewPrimary = Color(0xFF8E1D2A),
@@ -21,6 +24,7 @@ enum class AppColorTheme(
         previewTertiary = Color(0xFFD49B35)
     ),
     ROYAL_INDIGO(
+        titleEn = "Royal Indigo",
         titleBn = "নীলকণ্ঠ ইন্ডিগো",
         subtitle = "Royal Bengal Indigo",
         previewPrimary = Color(0xFF1E3A8A),
@@ -28,6 +32,7 @@ enum class AppColorTheme(
         previewTertiary = Color(0xFFD97706)
     ),
     BENGAL_EMERALD(
+        titleEn = "Delta Emerald",
         titleBn = "বাংলা পান্না সবুজ",
         subtitle = "Lush Delta Emerald",
         previewPrimary = Color(0xFF0F6E56),
@@ -35,6 +40,7 @@ enum class AppColorTheme(
         previewTertiary = Color(0xFFC88A2B)
     ),
     SUVARNA_TERRACOTTA(
+        titleEn = "Suvarna Terracotta",
         titleBn = "সুবর্ণ টেরাকোটা",
         subtitle = "Paharpur Clay & Gold",
         previewPrimary = Color(0xFFA8431D),
@@ -42,6 +48,7 @@ enum class AppColorTheme(
         previewTertiary = Color(0xFF2B6CB0)
     ),
     OCEAN_TEAL(
+        titleEn = "Bay Ocean Teal",
         titleBn = "সাগর নীলাভ টিল",
         subtitle = "Bay of Bengal Breeze",
         previewPrimary = Color(0xFF0E7490),
@@ -49,18 +56,23 @@ enum class AppColorTheme(
         previewTertiary = Color(0xFFE11D48)
     ),
     CUSTOM(
+        titleEn = "Custom Color",
         titleBn = "কাস্টম কালার",
-        subtitle = "আপনার পছন্দের রঙ",
+        subtitle = "Your Personalized Palette",
         previewPrimary = Color(0xFF7C3AED),
         previewSecondary = Color(0xFF3730A3),
         previewTertiary = Color(0xFFEC4899)
-    )
+    );
+
+    fun label(lang: AppLanguage): String = lang.pick(titleEn, titleBn)
 }
 
-enum class ThemeMode(val labelBn: String) {
-    SYSTEM("সিস্টেম ডিফল্ট"),
-    LIGHT("লাইট মোড"),
-    DARK("ডার্ক মোড")
+enum class ThemeMode(val labelEn: String, val labelBn: String) {
+    SYSTEM("System", "সিস্টেম ডিফল্ট"),
+    LIGHT("Light", "লাইট মোড"),
+    DARK("Dark", "ডার্ক মোড");
+
+    fun label(lang: AppLanguage): String = lang.pick(labelEn, labelBn)
 }
 
 fun buildColorScheme(

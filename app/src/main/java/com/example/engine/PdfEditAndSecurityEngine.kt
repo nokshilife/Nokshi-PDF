@@ -31,8 +31,10 @@ import com.tom_roush.pdfbox.rendering.ImageType
 import com.tom_roush.pdfbox.rendering.PDFRenderer
 import com.tom_roush.pdfbox.text.PDFTextStripper
 import com.tom_roush.pdfbox.text.TextPosition
+import com.tom_roush.pdfbox.util.Matrix
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -48,7 +50,7 @@ data class PdfInspectResult(
     val requiresPassword: Boolean
 )
 
-class PasswordRequiredPdfException : Exception("এই PDF ফাইলটি পাসওয়ার্ড দিয়ে সুরক্ষিত।")
+class PasswordRequiredPdfException : Exception("Password required to open this PDF")
 
 object PdfEditAndSecurityEngine {
 
@@ -179,6 +181,47 @@ object PdfEditAndSecurityEngine {
         count
     }
 
+    suspend fun applyPageOperations(
+        context: Context,
+        sourceFile: File,
+        pageSpecs: List<PageOperationSpec>,
+        password: String = ""
+    ): Int = withContext(Dispatchers.IO) {
+        ensureInitialized(context)
+        require(pageSpecs.isNotEmpty()) { "At least one page must remain in the PDF." }
+        val tmp = File(sourceFile.parentFile, "tmp_pages_${System.currentTimeMillis()}.pdf")
+
+        val newTotal = PDDocument.load(sourceFile, password).use { srcDoc ->
+            srcDoc.isAllSecurityToBeRemoved = true
+            val totalExisting = srcDoc.numberOfPages
+            val validSpecs = pageSpecs.filter { it.originalPageIndex in 0 until totalExisting }
+            require(validSpecs.isNotEmpty()) { "No valid pages selected." }
+
+            PDDocument().use { outDoc ->
+                validSpecs.forEach { spec ->
+                    val srcPage = srcDoc.getPage(spec.originalPageIndex)
+                    val imported = outDoc.importPage(srcPage)
+                    val currentRot = imported.rotation
+                    val newRot = (((currentRot + spec.additionalRotationDeg) % 360) + 360) % 360
+                    imported.rotation = newRot
+                }
+
+                if (password.isNotEmpty()) {
+                    val spp = StandardProtectionPolicy(password, password, AccessPermission()).apply {
+                        encryptionKeyLength = 128
+                    }
+                    outDoc.protect(spp)
+                }
+                outDoc.save(tmp)
+                outDoc.numberOfPages
+            }
+        }
+
+        tmp.copyTo(sourceFile, overwrite = true)
+        tmp.delete()
+        newTotal
+    }
+
     suspend fun saveEditsToPdf(
         context: Context,
         sourceFile: File,
@@ -195,6 +238,9 @@ object PdfEditAndSecurityEngine {
 
         val regularTf = runCatching { ResourcesCompat.getFont(context, R.font.hind_siliguri) }.getOrNull() ?: Typeface.SANS_SERIF
         val boldTf = Typeface.create(regularTf, Typeface.BOLD)
+        val argbDecodeOpts = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
 
         PDDocument.load(sourceFile, password).use { doc ->
             doc.isAllSecurityToBeRemoved = true
@@ -215,13 +261,17 @@ object PdfEditAndSecurityEngine {
                                 val right = max(item.normLeft, item.normRight) * pw
                                 val topNorm = min(item.normTop, item.normBottom)
                                 val bottomNorm = max(item.normTop, item.normBottom)
-                                val pdfY = ph * (1f - bottomNorm)
-                                val rectH = (bottomNorm - topNorm) * ph
-                                val rectW = right - left
+                                val pdfX = box.lowerLeftX + left
+                                val pdfY = box.lowerLeftY + ph * (1f - bottomNorm)
+                                val rectW = (right - left).coerceAtLeast(2f)
+                                val rectH = ((bottomNorm - topNorm) * ph).coerceAtLeast(2f)
 
+                                cs.saveGraphicsState()
+                                applyPdfRotationAroundCenter(cs, pdfX + rectW / 2f, pdfY + rectH / 2f, item.rotationDeg)
                                 setNonStrokingArgb(cs, item.fillColorArgb)
-                                cs.addRect(box.lowerLeftX + left, box.lowerLeftY + pdfY, rectW, rectH)
+                                cs.addRect(pdfX, pdfY, rectW, rectH)
                                 cs.fill()
+                                cs.restoreGraphicsState()
                             }
 
                             is PageEditItem.TextReplacement -> {
@@ -233,12 +283,10 @@ object PdfEditAndSecurityEngine {
                                 val eraseH = ((bottomNorm - topNorm) * ph).coerceAtLeast(item.fontSizePt * 1.35f)
                                 val erasePdfY = ph * (1f - bottomNorm)
 
-                                // Erase original text area cleanly
                                 setNonStrokingArgb(cs, item.bgColorArgb)
                                 cs.addRect(box.lowerLeftX + left - 2f, box.lowerLeftY + erasePdfY - 2f, eraseW + 4f, eraseH + 4f)
                                 cs.fill()
 
-                                // Render replacement text with full Bengali + English shaping
                                 if (item.newText.isNotBlank()) {
                                     val textBmp = renderCrispTextBitmap(
                                         text = item.newText,
@@ -253,6 +301,30 @@ object PdfEditAndSecurityEngine {
                                     val topPdfY = ph * (1f - topNorm) - drawH
                                     cs.drawImage(pdImg, box.lowerLeftX + left, box.lowerLeftY + topPdfY, drawW, drawH)
                                     textBmp.recycle()
+                                }
+                            }
+
+                            is PageEditItem.FreehandStroke -> {
+                                if (item.points.size >= 2) {
+                                    cs.saveGraphicsState()
+                                    setStrokingArgb(cs, item.colorArgb)
+                                    cs.setLineWidth((item.strokeWidthNorm * pw).coerceAtLeast(1.5f))
+                                    cs.setLineCapStyle(1)
+                                    cs.setLineJoinStyle(1)
+
+                                    val first = item.points.first()
+                                    cs.moveTo(
+                                        box.lowerLeftX + first.x * pw,
+                                        box.lowerLeftY + (1f - first.y) * ph
+                                    )
+                                    item.points.drop(1).forEach { pt ->
+                                        cs.lineTo(
+                                            box.lowerLeftX + pt.x * pw,
+                                            box.lowerLeftY + (1f - pt.y) * ph
+                                        )
+                                    }
+                                    cs.stroke()
+                                    cs.restoreGraphicsState()
                                 }
                             }
 
@@ -287,16 +359,19 @@ object PdfEditAndSecurityEngine {
 
                             is PageEditItem.ShapeItem -> {
                                 cs.saveGraphicsState()
+                                val x1 = box.lowerLeftX + item.startX * pw
+                                val y1 = box.lowerLeftY + (1f - item.startY) * ph
+                                val x2 = box.lowerLeftX + item.endX * pw
+                                val y2 = box.lowerLeftY + (1f - item.endY) * ph
+                                val cx = (x1 + x2) / 2f
+                                val cy = (y1 + y2) / 2f
+
+                                applyPdfRotationAroundCenter(cs, cx, cy, item.rotationDeg)
                                 setStrokingArgb(cs, item.colorArgb)
                                 setNonStrokingArgb(cs, item.colorArgb)
                                 cs.setLineWidth((item.strokeWidthNorm * pw).coerceAtLeast(1.5f))
                                 cs.setLineCapStyle(1)
                                 cs.setLineJoinStyle(1)
-
-                                val x1 = box.lowerLeftX + item.startX * pw
-                                val y1 = box.lowerLeftY + (1f - item.startY) * ph
-                                val x2 = box.lowerLeftX + item.endX * pw
-                                val y2 = box.lowerLeftY + (1f - item.endY) * ph
 
                                 when (item.shapeType) {
                                     ShapeType.LINE -> {
@@ -323,23 +398,19 @@ object PdfEditAndSecurityEngine {
                                     ShapeType.RECTANGLE -> {
                                         val rx = min(x1, x2)
                                         val ry = min(y1, y2)
-                                        val rw = kotlin.math.abs(x2 - x1).coerceAtLeast(4f)
-                                        val rh = kotlin.math.abs(y2 - y1).coerceAtLeast(4f)
+                                        val rw = abs(x2 - x1).coerceAtLeast(4f)
+                                        val rh = abs(y2 - y1).coerceAtLeast(4f)
                                         cs.addRect(rx, ry, rw, rh)
                                         if (item.isFilled) cs.fill() else cs.stroke()
                                     }
                                     ShapeType.CIRCLE -> {
-                                        val cx = (x1 + x2) / 2f
-                                        val cy = (y1 + y2) / 2f
                                         val r = (hypot(x2 - x1, y2 - y1) / 2f).coerceAtLeast(4f)
                                         drawPdfEllipse(cs, cx, cy, r, r)
                                         if (item.isFilled) cs.fill() else cs.stroke()
                                     }
                                     ShapeType.OVAL -> {
-                                        val cx = (x1 + x2) / 2f
-                                        val cy = (y1 + y2) / 2f
-                                        val rx = (kotlin.math.abs(x2 - x1) / 2f).coerceAtLeast(4f)
-                                        val ry = (kotlin.math.abs(y2 - y1) / 2f).coerceAtLeast(4f)
+                                        val rx = (abs(x2 - x1) / 2f).coerceAtLeast(4f)
+                                        val ry = (abs(y2 - y1) / 2f).coerceAtLeast(4f)
                                         drawPdfEllipse(cs, cx, cy, rx, ry)
                                         if (item.isFilled) cs.fill() else cs.stroke()
                                     }
@@ -355,14 +426,17 @@ object PdfEditAndSecurityEngine {
                                         fontSizePt = item.fontSizePt,
                                         colorArgb = item.colorArgb,
                                         typeface = tf,
-                                        maxWidthPt = (pw * (1f - item.normX)).coerceAtLeast(90f)
+                                        maxWidthPt = (pw * 0.85f).coerceAtLeast(90f)
                                     )
                                     val pdImg = LosslessFactory.createFromImage(doc, bmp)
                                     val drawW = bmp.width / 3f
                                     val drawH = bmp.height / 3f
                                     val pdfX = box.lowerLeftX + item.normX * pw
                                     val pdfY = box.lowerLeftY + (1f - item.normY) * ph - drawH
+                                    cs.saveGraphicsState()
+                                    applyPdfRotationAroundCenter(cs, pdfX + drawW / 2f, pdfY + drawH / 2f, item.rotationDeg)
                                     cs.drawImage(pdImg, pdfX, pdfY, drawW, drawH)
+                                    cs.restoreGraphicsState()
                                     bmp.recycle()
                                 }
                             }
@@ -370,13 +444,16 @@ object PdfEditAndSecurityEngine {
                             is PageEditItem.ImageAddition -> {
                                 val imgFile = File(item.imagePath)
                                 if (imgFile.exists()) {
-                                    BitmapFactory.decodeFile(imgFile.absolutePath)?.let { bmp ->
+                                    BitmapFactory.decodeFile(imgFile.absolutePath, argbDecodeOpts)?.let { bmp ->
                                         val pdImg = LosslessFactory.createFromImage(doc, bmp)
                                         val drawW = item.normWidth * pw
                                         val drawH = item.normHeight * ph
                                         val pdfX = box.lowerLeftX + item.normX * pw
                                         val pdfY = box.lowerLeftY + (1f - item.normY - item.normHeight) * ph
+                                        cs.saveGraphicsState()
+                                        applyPdfRotationAroundCenter(cs, pdfX + drawW / 2f, pdfY + drawH / 2f, item.rotationDeg)
                                         cs.drawImage(pdImg, pdfX, pdfY, drawW, drawH)
+                                        cs.restoreGraphicsState()
                                         bmp.recycle()
                                     }
                                 }
@@ -385,13 +462,16 @@ object PdfEditAndSecurityEngine {
                             is PageEditItem.SignatureAddition -> {
                                 val sigFile = File(item.signaturePath)
                                 if (sigFile.exists()) {
-                                    BitmapFactory.decodeFile(sigFile.absolutePath)?.let { bmp ->
+                                    BitmapFactory.decodeFile(sigFile.absolutePath, argbDecodeOpts)?.let { bmp ->
                                         val pdImg = LosslessFactory.createFromImage(doc, bmp)
                                         val drawW = item.normWidth * pw
                                         val drawH = item.normHeight * ph
                                         val pdfX = box.lowerLeftX + item.normX * pw
                                         val pdfY = box.lowerLeftY + (1f - item.normY - item.normHeight) * ph
+                                        cs.saveGraphicsState()
+                                        applyPdfRotationAroundCenter(cs, pdfX + drawW / 2f, pdfY + drawH / 2f, item.rotationDeg)
                                         cs.drawImage(pdImg, pdfX, pdfY, drawW, drawH)
+                                        cs.restoreGraphicsState()
                                         bmp.recycle()
                                     }
                                 }
@@ -419,6 +499,21 @@ object PdfEditAndSecurityEngine {
         }
     }
 
+    private fun applyPdfRotationAroundCenter(
+        cs: PDPageContentStream,
+        centerX: Float,
+        centerY: Float,
+        rotationDeg: Float
+    ) {
+        val normalized = rotationDeg % 360f
+        if (abs(normalized) < 0.1f) return
+        // Screen clockwise rotation corresponds to negative radians in PDF bottom-up coordinates
+        val rad = -Math.toRadians(normalized.toDouble())
+        cs.transform(Matrix.getTranslateInstance(centerX, centerY))
+        cs.transform(Matrix.getRotateInstance(rad, 0f, 0f))
+        cs.transform(Matrix.getTranslateInstance(-centerX, -centerY))
+    }
+
     suspend fun mergePdfs(
         context: Context,
         filesToMerge: List<File>,
@@ -426,7 +521,7 @@ object PdfEditAndSecurityEngine {
         passwords: Map<String, String> = emptyMap()
     ): ConversionOutput = withContext(Dispatchers.IO) {
         ensureInitialized(context)
-        require(filesToMerge.size >= 2) { "মার্জ করার জন্য কমপক্ষে ২টি PDF ফাইল নির্বাচন করুন।" }
+        require(filesToMerge.size >= 2) { "Select at least 2 PDF files to merge." }
 
         val cleanTitle = outputTitle.trim().ifBlank { "Merged_Nokshi_PDF" }
         val outDir = File(context.filesDir, "workspace_pdfs").apply { mkdirs() }
@@ -459,7 +554,7 @@ object PdfEditAndSecurityEngine {
         newPassword: String
     ): File = withContext(Dispatchers.IO) {
         ensureInitialized(context)
-        require(newPassword.isNotBlank()) { "একটি পাসওয়ার্ড লিখুন।" }
+        require(newPassword.isNotBlank()) { "Password cannot be empty." }
         val outFile = File(
             sourceFile.parentFile,
             "${sourceFile.nameWithoutExtension}_locked_${System.currentTimeMillis()}.pdf"

@@ -1,8 +1,10 @@
 package com.example.ui
 
 import android.app.Application
-import android.graphics.Bitmap
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.NokshiDatabase
@@ -12,18 +14,18 @@ import com.example.data.ThemePreferencesRepository
 import com.example.data.UserThemeSettings
 import com.example.data.WorkspacePdfEntity
 import com.example.engine.ConvertedPageImage
-import com.example.engine.DetectedPdfTextLine
 import com.example.engine.FileToPdfConverter
-import com.example.engine.OcrLensEngine
-import com.example.engine.OcrPageResult
-import com.example.engine.OcrStepProgress
+import com.example.engine.LensAndReadAloudHelper
 import com.example.engine.PageEditItem
-import com.example.engine.PasswordRequiredPdfException
+import com.example.engine.PageOperationSpec
 import com.example.engine.PdfEditAndSecurityEngine
+import com.example.engine.StorageExportHelper
+import com.example.ui.i18n.AppLanguage
 import com.example.ui.theme.AppColorTheme
 import com.example.ui.theme.AppFontStyle
 import com.example.ui.theme.ThemeMode
 import java.io.File
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -42,14 +44,20 @@ enum class MainTab {
 enum class SubRoute {
     NONE,
     EDITOR,
-    OCR_WINDOW,
     PDF_TO_IMAGE
 }
 
 enum class PendingProtectedAction {
     OPEN_EDITOR,
-    RUN_OCR,
+    OPEN_IN_LENS,
+    READ_ALOUD,
     EXPORT_IMAGES
+}
+
+enum class ReadAloudStage {
+    IDLE,
+    LAUNCHING_LENS,
+    IN_LENS
 }
 
 data class NokshiUiState(
@@ -61,17 +69,12 @@ data class NokshiUiState(
 
     // Active Editor State
     val activePdf: WorkspacePdfEntity? = null,
-    val currentPageIndex: Int = 0,
-    val totalPages: Int = 1,
-    val currentPageBitmap: Bitmap? = null,
-    val detectedTextLines: List<DetectedPdfTextLine> = emptyList(),
+    val activeUnlockedPassword: String = "",
     val pendingEdits: List<PageEditItem> = emptyList(),
 
-    // OCR Window State
-    val ocrPdfTitle: String = "",
-    val isOcrRunning: Boolean = false,
-    val ocrProgress: OcrStepProgress? = null,
-    val ocrResults: List<OcrPageResult> = emptyList(),
+    // Read Aloud Splash & Lifecycle State
+    val showReadAloudSplash: Boolean = false,
+    val readAloudStage: ReadAloudStage = ReadAloudStage.IDLE,
 
     // PDF-to-Image State
     val imageExportPdfTitle: String = "",
@@ -81,7 +84,8 @@ data class NokshiUiState(
     // Password Dialog States
     val passwordVaultTarget: WorkspacePdfEntity? = null,
     val unlockPromptTarget: WorkspacePdfEntity? = null,
-    val pendingProtectedAction: PendingProtectedAction? = null
+    val pendingProtectedAction: PendingProtectedAction? = null,
+    val pendingTargetPageIndex: Int = 0
 )
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -110,6 +114,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         PdfEditAndSecurityEngine.ensureInitialized(context)
     }
 
+    private fun pickMsg(en: String, bn: String): String {
+        return themeSettings.value.language.pick(en, bn)
+    }
+
     fun selectTab(tab: MainTab) {
         _uiState.update { it.copy(activeTab = tab, subRoute = SubRoute.NONE) }
     }
@@ -126,7 +134,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(snackbarMessage = null) }
     }
 
-    // --- Theme & Font Customization ---
+    // --- Language, Theme & Font Customization ---
+    fun setLanguage(language: AppLanguage) {
+        viewModelScope.launch { themePrefs.updateLanguage(language) }
+    }
+
     fun setColorTheme(theme: AppColorTheme) {
         viewModelScope.launch { themePrefs.updateColorTheme(theme) }
     }
@@ -147,40 +159,68 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun saveSignature(label: String, file: File, strokeColorArgb: Int) {
         viewModelScope.launch {
             repository.saveSignature(label, file, strokeColorArgb)
-            showMessage("স্বাক্ষরটি লাইব্রেরীতে সংরক্ষিত হয়েছে!")
+            showMessage(pickMsg("Signature saved to library!", "স্বাক্ষরটি লাইব্রেরীতে সংরক্ষিত হয়েছে!"))
         }
     }
 
     fun deleteSignature(entity: SignatureEntity) {
         viewModelScope.launch {
             repository.deleteSignature(entity)
-            showMessage("স্বাক্ষর মুছে ফেলা হয়েছে।")
+            showMessage(pickMsg("Signature deleted.", "স্বাক্ষর মুছে ফেলা হয়েছে।"))
         }
     }
 
     // --- File Converters & Openers ---
-    fun importPdfFromUri(uri: Uri, afterAction: PendingProtectedAction = PendingProtectedAction.OPEN_EDITOR) {
+    fun importPdfFromUri(
+        uri: Uri,
+        afterAction: PendingProtectedAction = PendingProtectedAction.OPEN_EDITOR,
+        activityContext: Context? = null
+    ) {
         viewModelScope.launch {
-            setBusy(true, "PDF ওপেন করা হচ্ছে...")
+            setBusy(true, pickMsg("Opening PDF...", "PDF ওপেন করা হচ্ছে..."))
             runCatching {
+                // Take persistable read+write permissions when available so edits save directly back to this original file!
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                    )
+                }.onFailure {
+                    runCatching {
+                        context.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    }
+                }
+
                 val out = FileToPdfConverter.importExistingPdf(context, uri)
                 val inspect = PdfEditAndSecurityEngine.inspectPdf(context, out.file)
+                val origDisplayName = FileToPdfConverter.resolveDisplayName(context, uri).ifBlank { "${out.title}.pdf" }
                 val saved = repository.upsertWorkspacePdf(
                     title = out.title,
                     file = out.file,
                     pageCount = inspect.pageCount,
                     sourceCategory = "PDF",
-                    isPasswordProtected = inspect.isEncrypted
+                    isPasswordProtected = inspect.isEncrypted,
+                    originalUriString = uri.toString(),
+                    savedLocationLabel = "Original: $origDisplayName"
                 )
                 setBusy(false)
                 when (afterAction) {
                     PendingProtectedAction.OPEN_EDITOR -> openPdfInEditor(saved)
-                    PendingProtectedAction.RUN_OCR -> startOcrForPdf(saved)
+                    PendingProtectedAction.OPEN_IN_LENS -> openPdfInGoogleLens(saved, 0, activityContext ?: context)
+                    PendingProtectedAction.READ_ALOUD -> startReadAloudForPdf(saved, 0, activityContext ?: context)
                     PendingProtectedAction.EXPORT_IMAGES -> openPdfToImages(saved)
                 }
             }.onFailure { err ->
                 setBusy(false)
-                showMessage("সমস্যা হয়েছে: ${err.localizedMessage ?: "PDF পড়া যায়নি"}")
+                showMessage(
+                    pickMsg(
+                        "Could not open PDF: ${err.localizedMessage ?: "Unknown error"}",
+                        "সমস্যা হয়েছে: ${err.localizedMessage ?: "PDF পড়া যায়নি"}"
+                    )
+                )
             }
         }
     }
@@ -188,46 +228,87 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun importMultiplePdfsToWorkspace(uris: List<Uri>) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
-            setBusy(true, "${uris.size}টি PDF ওয়ার্কস্পেসে আনা হচ্ছে...")
+            setBusy(true, pickMsg("Importing ${uris.size} PDFs...", "${uris.size}টি PDF ওয়ার্কস্পেসে আনা হচ্ছে..."))
             var imported = 0
             uris.forEach { uri ->
                 runCatching {
+                    runCatching {
+                        context.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        )
+                    }
                     val out = FileToPdfConverter.importExistingPdf(context, uri)
                     val inspect = PdfEditAndSecurityEngine.inspectPdf(context, out.file)
+                    val origName = FileToPdfConverter.resolveDisplayName(context, uri).ifBlank { "${out.title}.pdf" }
                     repository.upsertWorkspacePdf(
                         title = out.title,
                         file = out.file,
                         pageCount = inspect.pageCount,
                         sourceCategory = "PDF",
-                        isPasswordProtected = inspect.isEncrypted
+                        isPasswordProtected = inspect.isEncrypted,
+                        originalUriString = uri.toString(),
+                        savedLocationLabel = "Original: $origName"
                     )
                     imported++
                 }
             }
             setBusy(false)
-            showMessage("$imported টি PDF মার্জ স্টুডিওতে যুক্ত হয়েছে!")
+            showMessage(
+                pickMsg(
+                    "$imported PDFs added to Merge Studio!",
+                    "$imported টি PDF মার্জ স্টুডিওতে যুক্ত হয়েছে!"
+                )
+            )
         }
+    }
+
+    private suspend fun saveNewGeneratedPdfAndRegister(
+        title: String,
+        file: File,
+        pageCount: Int,
+        category: String,
+        isPasswordProtected: Boolean = false
+    ): WorkspacePdfEntity {
+        val syncOutcome = StorageExportHelper.syncPdfToUserStorage(
+            context = context,
+            localPdfFile = file,
+            displayTitle = title,
+            originalUriString = null,
+            existingDownloadUriString = null
+        )
+        val entity = repository.upsertWorkspacePdf(
+            title = title,
+            file = file,
+            pageCount = pageCount,
+            sourceCategory = category,
+            isPasswordProtected = isPasswordProtected,
+            originalUriString = null,
+            downloadUriString = syncOutcome.downloadUriString,
+            savedLocationLabel = syncOutcome.locationBadge
+        )
+        showMessage(pickMsg(syncOutcome.messageEn, syncOutcome.messageBn))
+        return entity
     }
 
     fun convertDocumentUri(uri: Uri) {
         viewModelScope.launch {
-            setBusy(true, "ডকুমেন্ট ফাইল PDF-এ কনভার্ট হচ্ছে...")
+            setBusy(true, pickMsg("Converting Document to PDF...", "ডকুমেন্ট ফাইল PDF-এ কনভার্ট হচ্ছে..."))
             runCatching {
                 val out = FileToPdfConverter.convertDocumentToPdf(context, uri)
                 val inspect = PdfEditAndSecurityEngine.inspectPdf(context, out.file)
-                val entity = repository.upsertWorkspacePdf(
+                val entity = saveNewGeneratedPdfAndRegister(
                     title = out.title,
                     file = out.file,
                     pageCount = out.pageCount,
-                    sourceCategory = out.category,
+                    category = out.category,
                     isPasswordProtected = inspect.isEncrypted
                 )
                 setBusy(false)
-                showMessage("ডকুমেন্ট সফলভাবে PDF-এ রূপান্তরিত হয়েছে!")
                 openPdfInEditor(entity)
             }.onFailure { err ->
                 setBusy(false)
-                showMessage("ডকুমেন্ট কনভার্ট ব্যর্থ: ${err.localizedMessage}")
+                showMessage(pickMsg("Conversion failed: ${err.localizedMessage}", "ডকুমেন্ট কনভার্ট ব্যর্থ: ${err.localizedMessage}"))
             }
         }
     }
@@ -235,105 +316,100 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun convertImagesToPdf(uris: List<Uri>) {
         if (uris.isEmpty()) return
         viewModelScope.launch {
-            setBusy(true, "${uris.size}টি ইমেজ থেকে PDF তৈরি হচ্ছে...")
+            setBusy(true, pickMsg("Converting ${uris.size} images to PDF...", "${uris.size}টি ইমেজ থেকে PDF তৈরি হচ্ছে..."))
             runCatching {
                 val out = FileToPdfConverter.convertImagesToPdf(context, uris)
-                val entity = repository.upsertWorkspacePdf(
+                val entity = saveNewGeneratedPdfAndRegister(
                     title = out.title,
                     file = out.file,
                     pageCount = out.pageCount,
-                    sourceCategory = "IMAGE"
+                    category = "IMAGE"
                 )
                 setBusy(false)
-                showMessage("ইমেজ থেকে ${out.pageCount} পেজের PDF তৈরি হয়েছে!")
                 openPdfInEditor(entity)
             }.onFailure { err ->
                 setBusy(false)
-                showMessage("ইমেজ কনভার্ট ব্যর্থ: ${err.localizedMessage}")
+                showMessage(pickMsg("Image conversion failed: ${err.localizedMessage}", "ইমেজ কনভার্ট ব্যর্থ: ${err.localizedMessage}"))
             }
         }
     }
 
     fun convertExcelUri(uri: Uri) {
         viewModelScope.launch {
-            setBusy(true, "এক্সেল শীট PDF-এ কনভার্ট হচ্ছে...")
+            setBusy(true, pickMsg("Converting Excel sheet to PDF...", "এক্সেল শীট PDF-এ কনভার্ট হচ্ছে..."))
             runCatching {
                 val out = FileToPdfConverter.convertExcelToPdf(context, uri)
-                val entity = repository.upsertWorkspacePdf(
+                val entity = saveNewGeneratedPdfAndRegister(
                     title = out.title,
                     file = out.file,
                     pageCount = out.pageCount,
-                    sourceCategory = "EXCEL"
+                    category = "EXCEL"
                 )
                 setBusy(false)
-                showMessage("এক্সেল ফাইল সফলভাবে PDF-এ রূপান্তরিত হয়েছে!")
                 openPdfInEditor(entity)
             }.onFailure { err ->
                 setBusy(false)
-                showMessage("এক্সেল কনভার্ট ব্যর্থ: ${err.localizedMessage}")
+                showMessage(pickMsg("Excel conversion failed: ${err.localizedMessage}", "এক্সেল কনভার্ট ব্যর্থ: ${err.localizedMessage}"))
             }
         }
     }
 
     fun convertPresentationUri(uri: Uri) {
         viewModelScope.launch {
-            setBusy(true, "প্রেজেন্টেশন স্লাইড PDF-এ কনভার্ট হচ্ছে...")
+            setBusy(true, pickMsg("Converting PowerPoint slides to PDF...", "প্রেজেন্টেশন স্লাইড PDF-এ কনভার্ট হচ্ছে..."))
             runCatching {
                 val out = FileToPdfConverter.convertPresentationToPdf(context, uri)
-                val entity = repository.upsertWorkspacePdf(
+                val entity = saveNewGeneratedPdfAndRegister(
                     title = out.title,
                     file = out.file,
                     pageCount = out.pageCount,
-                    sourceCategory = "POWERPOINT"
+                    category = "POWERPOINT"
                 )
                 setBusy(false)
-                showMessage("পাওয়ারপয়েন্ট প্রেজেন্টেশন PDF-এ রূপান্তরিত হয়েছে!")
                 openPdfInEditor(entity)
             }.onFailure { err ->
                 setBusy(false)
-                showMessage("প্রেজেন্টেশন কনভার্ট ব্যর্থ: ${err.localizedMessage}")
+                showMessage(pickMsg("Presentation conversion failed: ${err.localizedMessage}", "প্রেজেন্টেশন কনভার্ট ব্যর্থ: ${err.localizedMessage}"))
             }
         }
     }
 
     fun createPdfFromText(title: String, body: String) {
         viewModelScope.launch {
-            setBusy(true, "নতুন ডকুমেন্ট PDF তৈরি হচ্ছে...")
+            setBusy(true, pickMsg("Creating new PDF in Download folder...", "নতুন ডকুমেন্ট PDF তৈরি হচ্ছে..."))
             runCatching {
                 val out = FileToPdfConverter.createPdfFromWrittenText(context, title, body)
-                val entity = repository.upsertWorkspacePdf(
+                val entity = saveNewGeneratedPdfAndRegister(
                     title = out.title,
                     file = out.file,
                     pageCount = out.pageCount,
-                    sourceCategory = "DOCUMENT"
+                    category = "DOCUMENT"
                 )
                 setBusy(false)
-                showMessage("নতুন PDF তৈরি সম্পন্ন!")
                 openPdfInEditor(entity)
             }.onFailure { err ->
                 setBusy(false)
-                showMessage("ত্রুটি: ${err.localizedMessage}")
+                showMessage(pickMsg("Error: ${err.localizedMessage}", "ত্রুটি: ${err.localizedMessage}"))
             }
         }
     }
 
     fun createStarterSamplePdf() {
         viewModelScope.launch {
-            setBusy(true, "নমুনা নকশি PDF তৈরি হচ্ছে...")
+            setBusy(true, pickMsg("Generating sample Nokshi PDF...", "নমুনা নকশি PDF তৈরি হচ্ছে..."))
             runCatching {
                 val out = FileToPdfConverter.createSampleNokshiPdf(context)
-                val entity = repository.upsertWorkspacePdf(
+                val entity = saveNewGeneratedPdfAndRegister(
                     title = out.title,
                     file = out.file,
                     pageCount = out.pageCount,
-                    sourceCategory = "SAMPLE"
+                    category = "SAMPLE"
                 )
                 setBusy(false)
-                showMessage("২ পেজের নমুনা নকশি PDF প্রস্তুত!")
                 openPdfInEditor(entity)
             }.onFailure { err ->
                 setBusy(false)
-                showMessage("নমুনা তৈরি ব্যর্থ: ${err.localizedMessage}")
+                showMessage(pickMsg("Sample creation failed: ${err.localizedMessage}", "নমুনা তৈরি ব্যর্থ: ${err.localizedMessage}"))
             }
         }
     }
@@ -341,14 +417,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteWorkspacePdf(entity: WorkspacePdfEntity) {
         viewModelScope.launch {
             repository.deleteWorkspacePdf(entity)
-            showMessage("PDF ফাইলটি মুছে ফেলা হয়েছে।")
+            showMessage(pickMsg("Removed from workspace.", "PDF ফাইলটি তালিকা থেকে সরানো হয়েছে।"))
         }
     }
 
-    // --- Merge PDFs ---
+    // --- Merge PDFs (Saved into Download/ folder) ---
     fun mergeSelectedWorkspacePdfs(entities: List<WorkspacePdfEntity>, mergedTitle: String) {
         viewModelScope.launch {
-            setBusy(true, "${entities.size}টি PDF একত্রে মার্জ করা হচ্ছে...")
+            setBusy(true, pickMsg("Merging ${entities.size} PDFs...", "${entities.size}টি PDF একত্রে মার্জ করা হচ্ছে..."))
             runCatching {
                 val files = entities.map { File(it.filePath) }
                 val out = PdfEditAndSecurityEngine.mergePdfs(
@@ -357,23 +433,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     outputTitle = mergedTitle,
                     passwords = unlockedPasswords
                 )
-                val mergedEntity = repository.upsertWorkspacePdf(
+                val mergedEntity = saveNewGeneratedPdfAndRegister(
                     title = out.title,
                     file = out.file,
                     pageCount = out.pageCount,
-                    sourceCategory = "MERGED"
+                    category = "MERGED"
                 )
                 setBusy(false)
-                showMessage("সফলভাবে মার্জ হয়ে ${out.pageCount} পেজের PDF তৈরি হয়েছে!")
                 openPdfInEditor(mergedEntity)
             }.onFailure { err ->
                 setBusy(false)
-                showMessage("মার্জ ব্যর্থ (সুরক্ষিত ফাইল হলে আগে আনলক করুন): ${err.localizedMessage}")
+                showMessage(
+                    pickMsg(
+                        "Merge failed (unlock protected PDFs first): ${err.localizedMessage}",
+                        "মার্জ ব্যর্থ (সুরক্ষিত ফাইল হলে আগে আনলক করুন): ${err.localizedMessage}"
+                    )
+                )
             }
         }
     }
 
-    // --- Password Vault & Unlocking ---
+    // --- Password Vault & Unlocking (Saved into Download/ folder) ---
     fun requestPasswordVault(entity: WorkspacePdfEntity) {
         _uiState.update { it.copy(passwordVaultTarget = entity) }
     }
@@ -385,7 +465,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun applyPasswordProtection(entity: WorkspacePdfEntity, currentPwd: String, newPwd: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(passwordVaultTarget = null) }
-            setBusy(true, "PDF ফাইলে পাসওয়ার্ড এনক্রিপশন যুক্ত হচ্ছে...")
+            setBusy(true, pickMsg("Encrypting PDF & saving to Download/...", "PDF ফাইলে পাসওয়ার্ড যুক্ত হচ্ছে..."))
             runCatching {
                 val srcFile = File(entity.filePath)
                 val effectiveOldPwd = currentPwd.ifBlank { unlockedPasswords[entity.filePath] ?: "" }
@@ -396,21 +476,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     newPassword = newPwd
                 )
                 unlockedPasswords[lockedFile.absolutePath] = newPwd
-                val lockedEntity = repository.upsertWorkspacePdf(
-                    title = "${entity.title} (Locked)",
+                val lockedTitle = "${entity.title}_Locked"
+                val lockedEntity = saveNewGeneratedPdfAndRegister(
+                    title = lockedTitle,
                     file = lockedFile,
                     pageCount = entity.pageCount,
-                    sourceCategory = entity.sourceCategory,
+                    category = entity.sourceCategory,
                     isPasswordProtected = true
                 )
                 if (_uiState.value.activePdf?.id == entity.id) {
-                    _uiState.update { it.copy(activePdf = lockedEntity) }
+                    _uiState.update {
+                        it.copy(
+                            activePdf = lockedEntity,
+                            activeUnlockedPassword = newPwd
+                        )
+                    }
                 }
                 setBusy(false)
-                showMessage("পাসওয়ার্ড দিয়ে সুরক্ষিত নতুন PDF সংরক্ষিত হয়েছে!")
             }.onFailure { err ->
                 setBusy(false)
-                showMessage("পাসওয়ার্ড সেট ব্যর্থ: ${err.localizedMessage}")
+                showMessage(pickMsg("Password setup failed: ${err.localizedMessage}", "পাসওয়ার্ড সেট ব্যর্থ: ${err.localizedMessage}"))
             }
         }
     }
@@ -418,25 +503,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun removePasswordFromPdf(entity: WorkspacePdfEntity, currentPwd: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(passwordVaultTarget = null) }
-            setBusy(true, "পাসওয়ার্ড সরানো হচ্ছে...")
+            setBusy(true, pickMsg("Removing password & saving to Download/...", "পাসওয়ার্ড সরানো হচ্ছে..."))
             runCatching {
                 val unlockedFile = PdfEditAndSecurityEngine.removePdfPassword(
                     context = context,
                     sourceFile = File(entity.filePath),
                     currentPassword = currentPwd
                 )
-                repository.upsertWorkspacePdf(
-                    title = "${entity.title.removeSuffix(" (Locked)")} (Unlocked)",
+                val cleanTitle = "${entity.title.removeSuffix("_Locked").removeSuffix(" (Locked)")}_Unlocked"
+                saveNewGeneratedPdfAndRegister(
+                    title = cleanTitle,
                     file = unlockedFile,
                     pageCount = entity.pageCount,
-                    sourceCategory = entity.sourceCategory,
+                    category = entity.sourceCategory,
                     isPasswordProtected = false
                 )
                 setBusy(false)
-                showMessage("পাসওয়ার্ড মুক্ত আনলক PDF তৈরি হয়েছে!")
             }.onFailure {
                 setBusy(false)
-                showMessage("সঠিক পাসওয়ার্ড দিন।")
+                showMessage(pickMsg("Incorrect password.", "সঠিক পাসওয়ার্ড দিন।"))
             }
         }
     }
@@ -445,19 +530,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(unlockPromptTarget = null, pendingProtectedAction = null) }
     }
 
-    fun submitUnlockPassword(password: String) {
+    fun submitUnlockPassword(password: String, activityContext: Context? = null) {
         val target = _uiState.value.unlockPromptTarget ?: return
         val action = _uiState.value.pendingProtectedAction ?: PendingProtectedAction.OPEN_EDITOR
+        val pageIdx = _uiState.value.pendingTargetPageIndex
         viewModelScope.launch {
             val inspect = PdfEditAndSecurityEngine.inspectPdf(context, File(target.filePath), password)
             if (inspect.requiresPassword) {
-                showMessage("ভুল পাসওয়ার্ড! আবার চেষ্টা করুন।")
+                showMessage(pickMsg("Wrong password! Please try again.", "ভুল পাসওয়ার্ড! আবার চেষ্টা করুন।"))
             } else {
                 unlockedPasswords[target.filePath] = password
                 _uiState.update { it.copy(unlockPromptTarget = null, pendingProtectedAction = null) }
                 when (action) {
                     PendingProtectedAction.OPEN_EDITOR -> openPdfInEditor(target)
-                    PendingProtectedAction.RUN_OCR -> startOcrForPdf(target)
+                    PendingProtectedAction.OPEN_IN_LENS -> openPdfInGoogleLens(target, pageIdx, activityContext ?: context)
+                    PendingProtectedAction.READ_ALOUD -> startReadAloudForPdf(target, pageIdx, activityContext ?: context)
                     PendingProtectedAction.EXPORT_IMAGES -> openPdfToImages(target)
                 }
             }
@@ -469,7 +556,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val file = File(entity.filePath)
             if (!file.exists()) {
-                showMessage("ফাইলটি পাওয়া যায়নি।")
+                showMessage(pickMsg("File not found.", "ফাইলটি পাওয়া যায়নি।"))
                 return@launch
             }
             val pwd = unlockedPasswords[entity.filePath] ?: ""
@@ -486,50 +573,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             _uiState.update {
                 it.copy(
-                    activePdf = entity,
-                    currentPageIndex = 0,
-                    totalPages = inspect.pageCount.coerceAtLeast(1),
+                    activePdf = entity.copy(pageCount = inspect.pageCount.coerceAtLeast(1)),
+                    activeUnlockedPassword = pwd,
                     pendingEdits = emptyList(),
                     subRoute = SubRoute.EDITOR
                 )
-            }
-            loadEditorPage(entity, 0, pwd)
-        }
-    }
-
-    fun selectEditorPage(pageIndex: Int) {
-        val pdf = _uiState.value.activePdf ?: return
-        val pwd = unlockedPasswords[pdf.filePath] ?: ""
-        viewModelScope.launch {
-            loadEditorPage(pdf, pageIndex, pwd)
-        }
-    }
-
-    private suspend fun loadEditorPage(entity: WorkspacePdfEntity, pageIndex: Int, pwd: String) {
-        setBusy(true)
-        runCatching {
-            val file = File(entity.filePath)
-            val bmp = PdfEditAndSecurityEngine.renderPageBitmap(context, file, pageIndex, pwd, scale = 2.0f)
-            val lines = PdfEditAndSecurityEngine.extractPageTextLines(context, file, pageIndex, pwd)
-            _uiState.update {
-                it.copy(
-                    currentPageIndex = pageIndex,
-                    currentPageBitmap = bmp,
-                    detectedTextLines = lines,
-                    isLoading = false
-                )
-            }
-        }.onFailure { err ->
-            setBusy(false)
-            if (err is PasswordRequiredPdfException) {
-                _uiState.update {
-                    it.copy(
-                        unlockPromptTarget = entity,
-                        pendingProtectedAction = PendingProtectedAction.OPEN_EDITOR
-                    )
-                }
-            } else {
-                showMessage("পেজ লোড করতে সমস্যা হয়েছে: ${err.localizedMessage}")
             }
         }
     }
@@ -560,87 +608,182 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun addBlankPageInEditor() {
+    fun addBlankPageInEditor(allCurrentEdits: List<PageEditItem>) {
         val pdf = _uiState.value.activePdf ?: return
         val pwd = unlockedPasswords[pdf.filePath] ?: ""
         viewModelScope.launch {
-            setBusy(true, "নতুন সাদা পেজ যোগ হচ্ছে...")
+            setBusy(true, pickMsg("Adding new blank page...", "নতুন সাদা পেজ যোগ হচ্ছে..."))
             runCatching {
-                if (_uiState.value.pendingEdits.isNotEmpty()) {
+                val localFile = File(pdf.filePath)
+                if (allCurrentEdits.isNotEmpty()) {
                     PdfEditAndSecurityEngine.saveEditsToPdf(
                         context = context,
-                        sourceFile = File(pdf.filePath),
-                        edits = _uiState.value.pendingEdits,
+                        sourceFile = localFile,
+                        edits = allCurrentEdits,
                         password = pwd
                     )
                 }
-                val newTotal = PdfEditAndSecurityEngine.addBlankPageToPdf(context, File(pdf.filePath), pwd)
+                val newTotal = PdfEditAndSecurityEngine.addBlankPageToPdf(context, localFile, pwd)
+                val syncOutcome = StorageExportHelper.syncPdfToUserStorage(
+                    context = context,
+                    localPdfFile = localFile,
+                    displayTitle = pdf.title,
+                    originalUriString = pdf.originalUriString,
+                    existingDownloadUriString = pdf.downloadUriString
+                )
                 val updated = repository.upsertWorkspacePdf(
                     title = pdf.title,
-                    file = File(pdf.filePath),
+                    file = localFile,
                     pageCount = newTotal,
                     sourceCategory = pdf.sourceCategory,
-                    isPasswordProtected = pdf.isPasswordProtected
+                    isPasswordProtected = pdf.isPasswordProtected,
+                    originalUriString = syncOutcome.originalUriString,
+                    downloadUriString = syncOutcome.downloadUriString,
+                    savedLocationLabel = syncOutcome.locationBadge
                 )
                 _uiState.update {
                     it.copy(
                         activePdf = updated,
-                        totalPages = newTotal,
-                        pendingEdits = emptyList()
+                        pendingEdits = emptyList(),
+                        isLoading = false,
+                        loadingMessage = ""
                     )
                 }
-                loadEditorPage(updated, newTotal - 1, pwd)
-                showMessage("নতুন পেজ যুক্ত হয়েছে!")
+                showMessage(pickMsg("Blank page added • ${syncOutcome.messageEn}", "নতুন পেজ যুক্ত হয়েছে • ${syncOutcome.messageBn}"))
             }.onFailure { err ->
                 setBusy(false)
-                showMessage("ত্রুটি: ${err.localizedMessage}")
+                showMessage(pickMsg("Error: ${err.localizedMessage}", "ত্রুটি: ${err.localizedMessage}"))
             }
         }
     }
 
-    fun saveEditorChanges() {
-        val state = _uiState.value
-        val pdf = state.activePdf ?: return
-        if (state.pendingEdits.isEmpty()) {
-            showMessage("কোনো নতুন পরিবর্তন নেই—ফাইলটি ইতিমধ্যে আপ-টু-ডেট।")
+    fun applyPageOperationsInEditor(
+        pageSpecs: List<PageOperationSpec>,
+        allCurrentEdits: List<PageEditItem>
+    ) {
+        val pdf = _uiState.value.activePdf ?: return
+        if (pageSpecs.isEmpty()) {
+            showMessage(pickMsg("At least 1 page must remain.", "অন্তত ১টি পেজ রাখতে হবে।"))
             return
         }
         val pwd = unlockedPasswords[pdf.filePath] ?: ""
         viewModelScope.launch {
-            setBusy(true, "পরিবর্তনগুলো PDF ফাইলে সেভ হচ্ছে...")
+            setBusy(true, pickMsg("Updating pages (reorder / rotate / delete)...", "পেজ সাজানো ও আপডেট হচ্ছে..."))
             runCatching {
-                val savedFile = PdfEditAndSecurityEngine.saveEditsToPdf(
+                val localFile = File(pdf.filePath)
+                if (allCurrentEdits.isNotEmpty()) {
+                    PdfEditAndSecurityEngine.saveEditsToPdf(
+                        context = context,
+                        sourceFile = localFile,
+                        edits = allCurrentEdits,
+                        password = pwd
+                    )
+                }
+                val newTotal = PdfEditAndSecurityEngine.applyPageOperations(
                     context = context,
-                    sourceFile = File(pdf.filePath),
-                    edits = state.pendingEdits,
-                    password = pwd,
-                    saveAsNewCopy = false
+                    sourceFile = localFile,
+                    pageSpecs = pageSpecs,
+                    password = pwd
                 )
+                val syncOutcome = StorageExportHelper.syncPdfToUserStorage(
+                    context = context,
+                    localPdfFile = localFile,
+                    displayTitle = pdf.title,
+                    originalUriString = pdf.originalUriString,
+                    existingDownloadUriString = pdf.downloadUriString
+                )
+                val updated = repository.upsertWorkspacePdf(
+                    title = pdf.title,
+                    file = localFile,
+                    pageCount = newTotal,
+                    sourceCategory = pdf.sourceCategory,
+                    isPasswordProtected = pdf.isPasswordProtected,
+                    originalUriString = syncOutcome.originalUriString,
+                    downloadUriString = syncOutcome.downloadUriString,
+                    savedLocationLabel = syncOutcome.locationBadge
+                )
+                _uiState.update {
+                    it.copy(
+                        activePdf = updated,
+                        pendingEdits = emptyList(),
+                        isLoading = false,
+                        loadingMessage = ""
+                    )
+                }
+                showMessage(
+                    pickMsg(
+                        "Pages updated ($newTotal pages) • ${syncOutcome.messageEn}",
+                        "পেজ আপডেট হয়েছে ($newTotal পেজ) • ${syncOutcome.messageBn}"
+                    )
+                )
+            }.onFailure { err ->
+                setBusy(false)
+                showMessage(pickMsg("Page update failed: ${err.localizedMessage}", "পেজ আপডেট ব্যর্থ: ${err.localizedMessage}"))
+            }
+        }
+    }
+
+    fun saveEditorChanges(allEditsToSave: List<PageEditItem>) {
+        val pdf = _uiState.value.activePdf ?: return
+        val pwd = unlockedPasswords[pdf.filePath] ?: ""
+        viewModelScope.launch {
+            setBusy(true, pickMsg("Saving PDF...", "পরিবর্তনগুলো PDF ফাইলে সেভ হচ্ছে..."))
+            runCatching {
+                val savedFile = if (allEditsToSave.isNotEmpty()) {
+                    PdfEditAndSecurityEngine.saveEditsToPdf(
+                        context = context,
+                        sourceFile = File(pdf.filePath),
+                        edits = allEditsToSave,
+                        password = pwd,
+                        saveAsNewCopy = false
+                    )
+                } else {
+                    File(pdf.filePath)
+                }
                 val inspect = PdfEditAndSecurityEngine.inspectPdf(context, savedFile, pwd)
+
+                // Requirement ছ: Overwrite original file in-place if opened from device, or update Download/ file!
+                val syncOutcome = StorageExportHelper.syncPdfToUserStorage(
+                    context = context,
+                    localPdfFile = savedFile,
+                    displayTitle = pdf.title,
+                    originalUriString = pdf.originalUriString,
+                    existingDownloadUriString = pdf.downloadUriString
+                )
+
                 val updatedEntity = repository.upsertWorkspacePdf(
                     title = pdf.title,
                     file = savedFile,
                     pageCount = inspect.pageCount,
                     sourceCategory = pdf.sourceCategory,
-                    isPasswordProtected = pdf.isPasswordProtected
+                    isPasswordProtected = pdf.isPasswordProtected,
+                    originalUriString = syncOutcome.originalUriString,
+                    downloadUriString = syncOutcome.downloadUriString,
+                    savedLocationLabel = syncOutcome.locationBadge
                 )
                 _uiState.update {
                     it.copy(
                         activePdf = updatedEntity,
-                        pendingEdits = emptyList()
+                        pendingEdits = emptyList(),
+                        isLoading = false,
+                        loadingMessage = ""
                     )
                 }
-                loadEditorPage(updatedEntity, state.currentPageIndex, pwd)
-                showMessage("সব এডিট সফলভাবে PDF ফাইলে সেভ হয়েছে!")
+                showMessage(pickMsg(syncOutcome.messageEn, syncOutcome.messageBn))
             }.onFailure { err ->
                 setBusy(false)
-                showMessage("সেভ ব্যর্থ: ${err.localizedMessage}")
+                showMessage(pickMsg("Save failed: ${err.localizedMessage}", "সেভ ব্যর্থ: ${err.localizedMessage}"))
             }
         }
     }
 
-    // --- Requirement 6: Background PDF-to-Image + Google Lens / ML Kit OCR ---
-    fun startOcrForPdf(entity: WorkspacePdfEntity) {
+    // --- Requirement চ: Open in Lens & Read Aloud (Edge Browser Return Flow) ---
+    fun openPdfInGoogleLens(
+        entity: WorkspacePdfEntity,
+        pageIndex: Int = 0,
+        activityContext: Context,
+        unsavedPageEdits: List<PageEditItem> = emptyList()
+    ) {
         viewModelScope.launch {
             val file = File(entity.filePath)
             val pwd = unlockedPasswords[entity.filePath] ?: ""
@@ -649,45 +792,143 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         unlockPromptTarget = entity,
-                        pendingProtectedAction = PendingProtectedAction.RUN_OCR
+                        pendingProtectedAction = PendingProtectedAction.OPEN_IN_LENS,
+                        pendingTargetPageIndex = pageIndex
                     )
                 }
                 return@launch
             }
 
-            _uiState.update {
-                it.copy(
-                    subRoute = SubRoute.OCR_WINDOW,
-                    ocrPdfTitle = entity.title,
-                    isOcrRunning = true,
-                    ocrProgress = null,
-                    ocrResults = emptyList()
+            setBusy(
+                true,
+                pickMsg(
+                    "Preparing Page ${pageIndex + 1} for Google Lens...",
+                    "Google Lens-এর জন্য পেজ ${pageIndex + 1} প্রস্তুত হচ্ছে..."
                 )
-            }
-
+            )
             runCatching {
-                val results = OcrLensEngine.runBackgroundPdfToImageAndLensOcr(
-                    context = context,
-                    pdfFile = file,
-                    password = pwd,
-                    onProgress = { prog ->
-                        _uiState.update { it.copy(ocrProgress = prog) }
-                    }
-                )
-                _uiState.update {
-                    it.copy(
-                        isOcrRunning = false,
-                        ocrResults = results
+                val pageEditsOnly = unsavedPageEdits.filter { it.pageIndex == pageIndex }
+                val sourceForLens = if (pageEditsOnly.isNotEmpty()) {
+                    PdfEditAndSecurityEngine.saveEditsToPdf(
+                        context = context,
+                        sourceFile = file,
+                        edits = pageEditsOnly,
+                        password = pwd,
+                        saveAsNewCopy = true
                     )
+                } else {
+                    file
+                }
+                val imgFile = try {
+                    LensAndReadAloudHelper.renderPdfPageToLensImage(
+                        context = context,
+                        pdfFile = sourceForLens,
+                        pageIndex = pageIndex,
+                        password = pwd
+                    )
+                } finally {
+                    if (sourceForLens != file) runCatching { sourceForLens.delete() }
+                }
+                setBusy(false)
+                val launched = LensAndReadAloudHelper.launchGoogleLens(activityContext, imgFile)
+                if (!launched) {
+                    showMessage(pickMsg("Could not launch Google Lens.", "Google Lens ওপেন করা যায়নি।"))
                 }
             }.onFailure { err ->
-                _uiState.update { it.copy(isOcrRunning = false) }
-                showMessage("OCR ব্যর্থ: ${err.localizedMessage}")
+                setBusy(false)
+                showMessage(pickMsg("Lens error: ${err.localizedMessage}", "ত্রুটি: ${err.localizedMessage}"))
             }
         }
     }
 
-    // --- Requirement 5: PDF to Image Converter ---
+    fun startReadAloudForPdf(
+        entity: WorkspacePdfEntity,
+        pageIndex: Int = 0,
+        activityContext: Context,
+        unsavedPageEdits: List<PageEditItem> = emptyList()
+    ) {
+        viewModelScope.launch {
+            val file = File(entity.filePath)
+            val pwd = unlockedPasswords[entity.filePath] ?: ""
+            val inspect = PdfEditAndSecurityEngine.inspectPdf(context, file, pwd)
+            if (inspect.requiresPassword) {
+                _uiState.update {
+                    it.copy(
+                        unlockPromptTarget = entity,
+                        pendingProtectedAction = PendingProtectedAction.READ_ALOUD,
+                        pendingTargetPageIndex = pageIndex
+                    )
+                }
+                return@launch
+            }
+
+            // Show splash message "টেক্সট কপি করুন" clearly to the user!
+            _uiState.update {
+                it.copy(
+                    showReadAloudSplash = true,
+                    readAloudStage = ReadAloudStage.LAUNCHING_LENS
+                )
+            }
+            Toast.makeText(
+                context,
+                "টেক্সট কপি করুন (পেজ ${pageIndex + 1}) • Copy text in Google Lens, then press Back",
+                Toast.LENGTH_LONG
+            ).show()
+
+            runCatching {
+                val pageEditsOnly = unsavedPageEdits.filter { it.pageIndex == pageIndex }
+                val sourceForLens = if (pageEditsOnly.isNotEmpty()) {
+                    PdfEditAndSecurityEngine.saveEditsToPdf(
+                        context = context,
+                        sourceFile = file,
+                        edits = pageEditsOnly,
+                        password = pwd,
+                        saveAsNewCopy = true
+                    )
+                } else {
+                    file
+                }
+                val imgFile = try {
+                    LensAndReadAloudHelper.renderPdfPageToLensImage(
+                        context = context,
+                        pdfFile = sourceForLens,
+                        pageIndex = pageIndex,
+                        password = pwd
+                    )
+                } finally {
+                    if (sourceForLens != file) runCatching { sourceForLens.delete() }
+                }
+                // Keep splash visible briefly so the user sees "টেক্সট কপি করুন" before Google Lens opens
+                delay(900)
+                _uiState.update { it.copy(showReadAloudSplash = false) }
+                val launched = LensAndReadAloudHelper.launchGoogleLens(activityContext, imgFile)
+                if (!launched) {
+                    _uiState.update { it.copy(readAloudStage = ReadAloudStage.IDLE) }
+                    showMessage(pickMsg("Could not launch Google Lens.", "Google Lens ওপেন করা যায়নি।"))
+                }
+            }.onFailure { err ->
+                _uiState.update {
+                    it.copy(showReadAloudSplash = false, readAloudStage = ReadAloudStage.IDLE)
+                }
+                showMessage(pickMsg("Read Aloud error: ${err.localizedMessage}", "ত্রুটি: ${err.localizedMessage}"))
+            }
+        }
+    }
+
+    fun notifyAppPausedForExternalActivity() {
+        if (_uiState.value.readAloudStage == ReadAloudStage.LAUNCHING_LENS) {
+            _uiState.update { it.copy(readAloudStage = ReadAloudStage.IN_LENS, showReadAloudSplash = false) }
+        }
+    }
+
+    fun notifyAppResumed(activityContext: Context) {
+        if (_uiState.value.readAloudStage == ReadAloudStage.IN_LENS) {
+            _uiState.update { it.copy(readAloudStage = ReadAloudStage.IDLE, showReadAloudSplash = false) }
+            LensAndReadAloudHelper.openReadAloudSiteInEdge(activityContext)
+        }
+    }
+
+    // --- PDF to Image Converter ---
     fun openPdfToImages(entity: WorkspacePdfEntity, highQuality: Boolean = true, asPng: Boolean = true) {
         viewModelScope.launch {
             val file = File(entity.filePath)
@@ -729,7 +970,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }.onFailure { err ->
                 _uiState.update { it.copy(isExportingImages = false) }
-                showMessage("PDF থেকে ইমেজ কনভার্ট ব্যর্থ: ${err.localizedMessage}")
+                showMessage(pickMsg("PDF to Image failed: ${err.localizedMessage}", "PDF থেকে ইমেজ কনভার্ট ব্যর্থ: ${err.localizedMessage}"))
             }
         }
     }
@@ -742,7 +983,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun saveSingleImageToGallery(img: ConvertedPageImage) {
         viewModelScope.launch {
             val ok = PdfEditAndSecurityEngine.saveImageFileToGallery(context, File(img.filePath))
-            showMessage(if (ok) "পেজ ${img.pageNumber} গ্যালারির Pictures/NokshiPDF ফোল্ডারে সেভ হয়েছে!" else "গ্যালারিতে সেভ করা যায়নি।")
+            showMessage(
+                if (ok) pickMsg(
+                    "Saved Page ${img.pageNumber} to Pictures/NokshiPDF!",
+                    "পেজ ${img.pageNumber} গ্যালারির Pictures/NokshiPDF ফোল্ডারে সেভ হয়েছে!"
+                ) else pickMsg("Failed to save image.", "গ্যালারিতে সেভ করা যায়নি।")
+            )
         }
     }
 
@@ -756,7 +1002,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     count++
                 }
             }
-            showMessage("$count টি ইমেজ গ্যালারির Pictures/NokshiPDF ফোল্ডারে সংরক্ষিত হয়েছে!")
+            showMessage(
+                pickMsg(
+                    "$count images saved to Pictures/NokshiPDF!",
+                    "$count টি ইমেজ গ্যালারির Pictures/NokshiPDF ফোল্ডারে সংরক্ষিত হয়েছে!"
+                )
+            )
         }
     }
 

@@ -5,7 +5,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.unit.dp
+import com.example.ui.i18n.AppLanguage
+import com.example.ui.i18n.LocalAppLanguage
 
 val NokshiShapes = Shapes(
     extraSmall = RoundedCornerShape(8.dp),
@@ -21,6 +24,7 @@ fun NokshiPdfTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
     customPrimaryArgb: Int = 0xFF8E1D2A.toInt(),
     fontStyle: AppFontStyle = AppFontStyle.HIND_SILIGURI,
+    language: AppLanguage = AppLanguage.ENGLISH,
     content: @Composable () -> Unit
 ) {
     val isDark = when (themeMode) {
@@ -36,12 +40,14 @@ fun NokshiPdfTheme(
     )
     val typography = buildAppTypography(fontStyle)
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = typography,
-        shapes = NokshiShapes,
-        content = content
-    )
+    CompositionLocalProvider(LocalAppLanguage provides language) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = typography,
+            shapes = NokshiShapes,
+            content = content
+        )
+    }
 }
 
 @Composable

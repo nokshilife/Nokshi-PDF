@@ -14,11 +14,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
@@ -26,6 +30,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.outlined.Build
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -38,6 +43,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,9 +52,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.MainTab
@@ -57,8 +69,8 @@ import com.example.ui.PendingProtectedAction
 import com.example.ui.SubRoute
 import com.example.ui.components.NokshiIcons
 import com.example.ui.components.SignatureLibraryContent
+import com.example.ui.i18n.tr
 import com.example.ui.screens.HomeScreen
-import com.example.ui.screens.OcrResultScreen
 import com.example.ui.screens.PasswordVaultDialog
 import com.example.ui.screens.PdfEditorScreen
 import com.example.ui.screens.PdfToImageScreen
@@ -81,7 +93,7 @@ class MainActivity : ComponentActivity() {
 
             LaunchedEffect(initialPdfUri) {
                 if (initialPdfUri != null) {
-                    vm.importPdfFromUri(initialPdfUri)
+                    vm.importPdfFromUri(initialPdfUri, PendingProtectedAction.OPEN_EDITOR, this@MainActivity)
                 }
             }
 
@@ -89,7 +101,8 @@ class MainActivity : ComponentActivity() {
                 colorTheme = themeSettings.colorTheme,
                 themeMode = themeSettings.themeMode,
                 customPrimaryArgb = themeSettings.customPrimaryArgb,
-                fontStyle = themeSettings.fontStyle
+                fontStyle = themeSettings.fontStyle,
+                language = themeSettings.language
             ) {
                 NokshiPdfAppRoot(vm = vm)
             }
@@ -99,6 +112,9 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun NokshiPdfAppRoot(vm: MainViewModel) {
+    val activityContext = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     val uiState by vm.uiState.collectAsStateWithLifecycle()
     val workspacePdfs by vm.workspacePdfs.collectAsStateWithLifecycle()
     val signatures by vm.signatures.collectAsStateWithLifecycle()
@@ -106,6 +122,25 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
 
     val snackbarHostState = remember { SnackbarHostState() }
     var showWriteDocDialog by remember { mutableStateOf(false) }
+
+    // Observe Activity pause/resume so returning from Google Lens during Read Aloud opens Edge reader!
+    DisposableEffect(lifecycleOwner, activityContext) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_PAUSE, Lifecycle.Event.ON_STOP -> {
+                    vm.notifyAppPausedForExternalActivity()
+                }
+                Lifecycle.Event.ON_RESUME -> {
+                    vm.notifyAppResumed(activityContext)
+                }
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     LaunchedEffect(uiState.snackbarMessage) {
         uiState.snackbarMessage?.let { msg ->
@@ -117,15 +152,19 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
     // SAF & Photo Picker Launchers
     val openPdfLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
-    ) { uri -> if (uri != null) vm.importPdfFromUri(uri, PendingProtectedAction.OPEN_EDITOR) }
+    ) { uri -> if (uri != null) vm.importPdfFromUri(uri, PendingProtectedAction.OPEN_EDITOR, activityContext) }
 
-    val openPdfForOcrLauncher = rememberLauncherForActivityResult(
+    val openPdfForLensLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
-    ) { uri -> if (uri != null) vm.importPdfFromUri(uri, PendingProtectedAction.RUN_OCR) }
+    ) { uri -> if (uri != null) vm.importPdfFromUri(uri, PendingProtectedAction.OPEN_IN_LENS, activityContext) }
+
+    val openPdfForReadAloudLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) vm.importPdfFromUri(uri, PendingProtectedAction.READ_ALOUD, activityContext) }
 
     val openPdfForImagesLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
-    ) { uri -> if (uri != null) vm.importPdfFromUri(uri, PendingProtectedAction.EXPORT_IMAGES) }
+    ) { uri -> if (uri != null) vm.importPdfFromUri(uri, PendingProtectedAction.EXPORT_IMAGES, activityContext) }
 
     val openMultiplePdfsLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
@@ -147,46 +186,43 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
         contract = ActivityResultContracts.OpenDocument()
     ) { uri -> if (uri != null) vm.convertPresentationUri(uri) }
 
-    // Full-screen Sub-routes (Editor, OCR Window, PDF-to-Image)
     when (uiState.subRoute) {
         SubRoute.EDITOR -> {
             val activePdf = uiState.activePdf
             if (activePdf != null) {
-                PdfEditorScreen(
-                    pdfEntity = activePdf,
-                    pageBitmap = uiState.currentPageBitmap,
-                    currentPageIndex = uiState.currentPageIndex,
-                    totalPages = uiState.totalPages,
-                    detectedTextLines = uiState.detectedTextLines,
-                    edits = uiState.pendingEdits,
-                    signatures = signatures,
-                    isBusy = uiState.isLoading,
-                    onBack = { vm.closeSubRoute() },
-                    onSelectPage = { vm.selectEditorPage(it) },
-                    onAddBlankPage = { vm.addBlankPageInEditor() },
-                    onAddEditItem = { vm.addEditorItem(it) },
-                    onUpdateEditItem = { vm.updateEditorItem(it) },
-                    onDeleteEditItem = { vm.deleteEditorItem(it) },
-                    onUndoLastEdit = { vm.undoLastEditorItem() },
-                    onSaveEdits = { vm.saveEditorChanges() },
-                    onCreateSignature = { lbl, file, col -> vm.saveSignature(lbl, file, col) },
-                    onDeleteSignature = { vm.deleteSignature(it) },
-                    onRequestPasswordDialog = { vm.requestPasswordVault(activePdf) },
-                    onRunOcrOnPdf = { vm.startOcrForPdf(activePdf) },
-                    onOpenPdfToImage = { vm.openPdfToImages(activePdf) }
-                )
+                Scaffold(
+                    contentWindowInsets = WindowInsets(0, 0, 0, 0),
+                    snackbarHost = { SnackbarHost(snackbarHostState) }
+                ) { _ ->
+                    PdfEditorScreen(
+                        pdfEntity = activePdf,
+                        unlockedPassword = uiState.activeUnlockedPassword,
+                        edits = uiState.pendingEdits,
+                        signatures = signatures,
+                        isBusy = uiState.isLoading,
+                        onBack = { vm.closeSubRoute() },
+                        onAddBlankPage = { allEdits -> vm.addBlankPageInEditor(allEdits) },
+                        onApplyPageOperations = { specs, allEdits ->
+                            vm.applyPageOperationsInEditor(specs, allEdits)
+                        },
+                        onAddEditItem = { vm.addEditorItem(it) },
+                        onUpdateEditItem = { vm.updateEditorItem(it) },
+                        onDeleteEditItem = { vm.deleteEditorItem(it) },
+                        onUndoLastEdit = { vm.undoLastEditorItem() },
+                        onSaveEdits = { allEdits -> vm.saveEditorChanges(allEdits) },
+                        onCreateSignature = { lbl, file, col -> vm.saveSignature(lbl, file, col) },
+                        onDeleteSignature = { vm.deleteSignature(it) },
+                        onRequestPasswordDialog = { vm.requestPasswordVault(activePdf) },
+                        onOpenInLens = { pageIdx, allEdits ->
+                            vm.openPdfInGoogleLens(activePdf, pageIdx, activityContext, allEdits)
+                        },
+                        onReadAloud = { pageIdx, allEdits ->
+                            vm.startReadAloudForPdf(activePdf, pageIdx, activityContext, allEdits)
+                        },
+                        onOpenPdfToImage = { vm.openPdfToImages(activePdf) }
+                    )
+                }
             }
-        }
-
-        SubRoute.OCR_WINDOW -> {
-            OcrResultScreen(
-                pdfTitle = uiState.ocrPdfTitle,
-                isProcessing = uiState.isOcrRunning,
-                progress = uiState.ocrProgress,
-                pageResults = uiState.ocrResults,
-                onBack = { vm.closeSubRoute() },
-                onShowMessage = { vm.showMessage(it) }
-            )
         }
 
         SubRoute.PDF_TO_IMAGE -> {
@@ -217,10 +253,10 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
                                     icon = {
                                         Icon(
                                             if (uiState.activeTab == MainTab.HOME) Icons.Filled.Home else Icons.Outlined.Home,
-                                            contentDescription = "হোম"
+                                            contentDescription = tr("Home", "হোম")
                                         )
                                     },
-                                    label = { Text("হোম") },
+                                    label = { Text(tr("Home", "হোম")) },
                                     modifier = Modifier.testTag("nav_tab_home")
                                 )
                                 NavigationBarItem(
@@ -229,10 +265,10 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
                                     icon = {
                                         Icon(
                                             if (uiState.activeTab == MainTab.TOOLS) Icons.Filled.Build else Icons.Outlined.Build,
-                                            contentDescription = "টুলস ও মার্জ"
+                                            contentDescription = tr("Tools", "টুলস")
                                         )
                                     },
-                                    label = { Text("টুলস") },
+                                    label = { Text(tr("Tools", "টুলস")) },
                                     modifier = Modifier.testTag("nav_tab_tools")
                                 )
                                 NavigationBarItem(
@@ -241,10 +277,10 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
                                     icon = {
                                         Icon(
                                             NokshiIcons.Draw,
-                                            contentDescription = "সিগনেচার লাইব্রেরী"
+                                            contentDescription = tr("Signatures", "সিগনেচার")
                                         )
                                     },
-                                    label = { Text("সিগনেচার") },
+                                    label = { Text(tr("Signatures", "সিগনেচার")) },
                                     modifier = Modifier.testTag("nav_tab_signatures")
                                 )
                                 NavigationBarItem(
@@ -253,10 +289,10 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
                                     icon = {
                                         Icon(
                                             NokshiIcons.Palette,
-                                            contentDescription = "থিম ও ফন্ট"
+                                            contentDescription = tr("Settings", "সেটিংস")
                                         )
                                     },
-                                    label = { Text("থিম ও ফন্ট") },
+                                    label = { Text(tr("Settings", "সেটিংস")) },
                                     modifier = Modifier.testTag("nav_tab_customize")
                                 )
                             }
@@ -273,26 +309,26 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
                                 NavigationRailItem(
                                     selected = uiState.activeTab == MainTab.HOME,
                                     onClick = { vm.selectTab(MainTab.HOME) },
-                                    icon = { Icon(Icons.Filled.Home, contentDescription = "হোম") },
-                                    label = { Text("হোম") }
+                                    icon = { Icon(Icons.Filled.Home, contentDescription = tr("Home", "হোম")) },
+                                    label = { Text(tr("Home", "হোম")) }
                                 )
                                 NavigationRailItem(
                                     selected = uiState.activeTab == MainTab.TOOLS,
                                     onClick = { vm.selectTab(MainTab.TOOLS) },
-                                    icon = { Icon(Icons.Filled.Build, contentDescription = "টুলস") },
-                                    label = { Text("টুলস") }
+                                    icon = { Icon(Icons.Filled.Build, contentDescription = tr("Tools", "টুলস")) },
+                                    label = { Text(tr("Tools", "টুলস")) }
                                 )
                                 NavigationRailItem(
                                     selected = uiState.activeTab == MainTab.SIGNATURES,
                                     onClick = { vm.selectTab(MainTab.SIGNATURES) },
-                                    icon = { Icon(NokshiIcons.Draw, contentDescription = "সিগনেচার") },
-                                    label = { Text("সিগনেচার") }
+                                    icon = { Icon(NokshiIcons.Draw, contentDescription = tr("Signatures", "সিগনেচার")) },
+                                    label = { Text(tr("Signatures", "সিগনেচার")) }
                                 )
                                 NavigationRailItem(
                                     selected = uiState.activeTab == MainTab.CUSTOMIZE,
                                     onClick = { vm.selectTab(MainTab.CUSTOMIZE) },
-                                    icon = { Icon(NokshiIcons.Palette, contentDescription = "থিম ও ফন্ট") },
-                                    label = { Text("থিম ও ফন্ট") }
+                                    icon = { Icon(NokshiIcons.Palette, contentDescription = tr("Settings", "সেটিংস")) },
+                                    label = { Text(tr("Settings", "সেটিংস")) }
                                 )
                             }
                         }
@@ -343,7 +379,8 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
                                     onCreateSamplePdf = { vm.createStarterSamplePdf() },
                                     onNavigateToMergeTab = { vm.selectTab(MainTab.TOOLS) },
                                     onOpenPdfInEditor = { vm.openPdfInEditor(it) },
-                                    onRunOcrOnPdf = { vm.startOcrForPdf(it) },
+                                    onOpenInLens = { vm.openPdfInGoogleLens(it, 0, activityContext) },
+                                    onReadAloud = { vm.startReadAloudForPdf(it, 0, activityContext) },
                                     onConvertPdfToImages = { vm.openPdfToImages(it) },
                                     onManagePassword = { vm.requestPasswordVault(it) },
                                     onDeletePdf = { vm.deleteWorkspacePdf(it) }
@@ -391,8 +428,11 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
                                     onMergeSelectedPdfs = { list, name ->
                                         vm.mergeSelectedWorkspacePdfs(list, name)
                                     },
-                                    onPickPdfForOcr = {
-                                        openPdfForOcrLauncher.launch(arrayOf("application/pdf"))
+                                    onPickPdfForLens = {
+                                        openPdfForLensLauncher.launch(arrayOf("application/pdf"))
+                                    },
+                                    onPickPdfForReadAloud = {
+                                        openPdfForReadAloudLauncher.launch(arrayOf("application/pdf"))
                                     },
                                     onPickPdfForImages = {
                                         openPdfForImagesLauncher.launch(arrayOf("application/pdf"))
@@ -413,6 +453,7 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
 
                                 MainTab.CUSTOMIZE -> ThemeCustomizeScreen(
                                     settings = themeSettings,
+                                    onSelectLanguage = { vm.setLanguage(it) },
                                     onSelectColorTheme = { vm.setColorTheme(it) },
                                     onSelectCustomColor = { vm.setCustomThemeColor(it) },
                                     onSelectThemeMode = { vm.setThemeMode(it) },
@@ -440,7 +481,7 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
         UnlockPdfPasswordDialog(
             pdfTitle = lockedPdf.title,
             onDismiss = { vm.dismissUnlockPrompt() },
-            onSubmitPassword = { vm.submitUnlockPassword(it) }
+            onSubmitPassword = { vm.submitUnlockPassword(it, activityContext) }
         )
     }
 
@@ -452,6 +493,50 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
                 vm.createPdfFromText(title, content)
             }
         )
+    }
+
+    // Requirement চ: Prominent Splash Message "টেক্সট কপি করুন" when Read Aloud opens Google Lens
+    if (uiState.showReadAloudSplash) {
+        Dialog(onDismissRequest = {}) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF0F6E56)),
+                shape = RoundedCornerShape(24.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(28.dp)
+                ) {
+                    Icon(
+                        imageVector = NokshiIcons.VolumeUp,
+                        contentDescription = null,
+                        tint = Color(0xFFFFCA28),
+                        modifier = Modifier.size(48.dp)
+                    )
+                    Text(
+                        text = "টেক্সট কপি করুন",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = tr(
+                            "Copy text in Google Lens, then press Back to open Read Aloud in Edge",
+                            "Google Lens থেকে টেক্সট কপি করে ব্যাক বাটনে চাপুন — অটোমেটিক Edge ব্রাউজারে ওপেন হবে"
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White.copy(alpha = 0.92f),
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    CircularProgressIndicator(color = Color(0xFFFFCA28), modifier = Modifier.size(28.dp))
+                }
+            }
+        }
     }
 
     if (uiState.isLoading && uiState.loadingMessage.isNotBlank()) {
@@ -466,7 +551,7 @@ fun NokshiPdfAppRoot(vm: MainViewModel) {
                 ) {
                     CircularProgressIndicator()
                     Column {
-                        Text("অনুগ্রহ করে অপেক্ষা করুন", style = MaterialTheme.typography.titleSmall)
+                        Text(tr("Please wait...", "অনুগ্রহ করে অপেক্ষা করুন"), style = MaterialTheme.typography.titleSmall)
                         Text(
                             text = uiState.loadingMessage,
                             style = MaterialTheme.typography.bodySmall,

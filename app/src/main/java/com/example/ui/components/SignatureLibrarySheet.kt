@@ -5,7 +5,11 @@ import android.graphics.Bitmap
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Paint
 import android.graphics.Path as AndroidPath
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,15 +40,18 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -54,11 +62,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -70,10 +81,11 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.data.SignatureEntity
+import com.example.engine.SignatureImageProcessor
+import com.example.ui.i18n.tr
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.max
-import kotlin.math.min
 
 private data class DrawnStroke(
     val points: List<Offset>,
@@ -90,38 +102,70 @@ fun SignatureLibraryContent(
     onDeleteSignature: (SignatureEntity) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var showCreatePad by remember { mutableStateOf(false) }
+    var importedRawBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    val externalSigPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            val decoded = SignatureImageProcessor.decodeSignatureBitmapFromUri(context, uri)
+            if (decoded != null) {
+                importedRawBitmap = decoded
+            }
+        }
+    }
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = tr("Signature Library", "নিজস্ব সিগনেচার লাইব্রেরী"),
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Text(
+                text = selectionModeLabel ?: tr(
+                    "Draw on pad or import an external signature image with automatic transparent background.",
+                    "প্যাডে স্বাক্ষর আঁকুন অথবা এক্সটার্নাল সিগনেচার ইমেজ (ট্রান্সপারেন্ট ব্যাকগ্রাউন্ডসহ) যোগ করুন।"
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // Action Buttons Row: Draw on Pad + Import External Image
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier.fillMaxWidth()
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = "নিজস্ব সিগনেচার লাইব্রেরী",
-                    style = MaterialTheme.typography.headlineSmall
-                )
-                Text(
-                    text = selectionModeLabel ?: "একাধিক স্বাক্ষর তৈরি করে সংরক্ষণ করুন এবং যেকোনো PDF-এ ব্যবহার করুন।",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Spacer(Modifier.width(8.dp))
             Button(
                 onClick = { showCreatePad = true },
-                modifier = Modifier.testTag("add_signature_button")
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("add_signature_button")
             ) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Icon(NokshiIcons.Draw, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("নতুন স্বাক্ষর")
+                Text(tr("Draw Pad", "প্যাডে আঁকুন"), maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            FilledTonalButton(
+                onClick = {
+                    externalSigPicker.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                    )
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("import_signature_image_button")
+            ) {
+                Icon(NokshiIcons.AddPhotoAlternate, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(tr("Import Image", "ইমেজ যোগ করুন"), maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
 
@@ -137,37 +181,37 @@ fun SignatureLibraryContent(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(28.dp)
+                        .padding(24.dp)
                 ) {
                     Icon(
                         imageVector = NokshiIcons.Draw,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(46.dp)
+                        modifier = Modifier.size(44.dp)
                     )
                     Text(
-                        text = "আপনার লাইব্রেরীতে এখনও কোনো সিগনেচার নেই",
+                        text = tr("No signatures saved yet", "আপনার লাইব্রেরীতে এখনও কোনো সিগনেচার নেই"),
                         style = MaterialTheme.typography.titleMedium
                     )
                     Text(
-                        text = "‘নতুন স্বাক্ষর’ বাটনে ট্যাপ করে আঙুল বা স্টাইলাস দিয়ে আপনার স্বাক্ষর এঁকে সংরক্ষণ করুন।",
+                        text = tr(
+                            "Draw your signature on the pad or import a photo of your signature — we automatically make its background transparent.",
+                            "প্যাডে স্বাক্ষর আঁকুন অথবা কাগজের স্বাক্ষরের ছবি ইমপোর্ট করুন — ব্যাকগ্রাউন্ড স্বয়ংক্রিয়ভাবে ট্রান্সপারেন্ট হয়ে যাবে।"
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    FilledTonalButton(onClick = { showCreatePad = true }) {
-                        Icon(NokshiIcons.Draw, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("এখনই সিগনেচার আঁকুন")
-                    }
                 }
             }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 156.dp),
-                contentPadding = PaddingValues(bottom = 24.dp),
+                columns = GridCells.Adaptive(minSize = 152.dp),
+                contentPadding = PaddingValues(bottom = 20.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.weight(1f, fill = false)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 200.dp, max = 460.dp)
             ) {
                 items(signatures, key = { it.id }) { sig ->
                     Card(
@@ -185,9 +229,9 @@ fun SignatureLibraryContent(
                                 contentAlignment = Alignment.Center,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(92.dp)
+                                    .height(88.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(Color.White)
+                                    .checkerboardBackground()
                                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(10.dp))
                                     .padding(8.dp)
                             ) {
@@ -217,18 +261,23 @@ fun SignatureLibraryContent(
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Delete,
-                                        contentDescription = "সিগনেচার মুছুন",
+                                        contentDescription = tr("Delete signature", "সিগনেচার মুছুন"),
                                         tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(19.dp)
                                     )
                                 }
                             }
                             if (onSelectSignature != null) {
-                                FilledTonalButton(
+                                Button(
                                     onClick = { onSelectSignature(sig) },
-                                    modifier = Modifier.fillMaxWidth()
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("place_signature_${sig.id}")
                                 ) {
-                                    Text("PDF-এ বসান")
+                                    Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text(tr("Place on Page", "পেজে বসান"))
                                 }
                             }
                         }
@@ -244,9 +293,197 @@ fun SignatureLibraryContent(
             onSaved = { label, file, color ->
                 onCreateSignature(label, file, color)
                 showCreatePad = false
+                // If opened from PDF Editor, immediately place newly drawn signature onto the page!
+                onSelectSignature?.invoke(
+                    SignatureEntity(
+                        id = -1L,
+                        label = label,
+                        imagePath = file.absolutePath,
+                        strokeColorArgb = color
+                    )
+                )
             }
         )
     }
+
+    importedRawBitmap?.let { rawBmp ->
+        ExternalSignatureImportDialog(
+            sourceBitmap = rawBmp,
+            onDismiss = {
+                rawBmp.recycle()
+                importedRawBitmap = null
+            },
+            onSaved = { label, file, color ->
+                onCreateSignature(label, file, color)
+                rawBmp.recycle()
+                importedRawBitmap = null
+                // If opened from PDF Editor, immediately place newly imported signature onto the page!
+                onSelectSignature?.invoke(
+                    SignatureEntity(
+                        id = -1L,
+                        label = label,
+                        imagePath = file.absolutePath,
+                        strokeColorArgb = color
+                    )
+                )
+            }
+        )
+    }
+}
+
+@Composable
+private fun ExternalSignatureImportDialog(
+    sourceBitmap: Bitmap,
+    onDismiss: () -> Unit,
+    onSaved: (label: String, pngFile: File, inkColorArgb: Int) -> Unit
+) {
+    val context = LocalContext.current
+    var label by remember { mutableStateOf("") }
+    var defaultLabel = tr("Imported Signature", "ইমপোর্ট করা স্বাক্ষর")
+    var removeBackground by remember { mutableStateOf(true) }
+    var tolerance by remember { mutableFloatStateOf(0.32f) }
+    var inkOverrideArgb by remember { mutableStateOf<Int?>(null) }
+
+    val previewBitmap = remember(sourceBitmap, removeBackground, tolerance, inkOverrideArgb) {
+        SignatureImageProcessor.processSignatureBitmap(
+            source = sourceBitmap,
+            removeBackground = removeBackground,
+            tolerance = tolerance,
+            inkOverrideArgb = inkOverrideArgb
+        )
+    }
+
+    DisposableEffect(previewBitmap) {
+        onDispose {
+            // Keep previewBitmap alive while displayed; GC reclaims old previews safely
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = tr("Import Signature Image", "সিগনেচার ইমেজ যোগ করুন"),
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = label,
+                    onValueChange = { label = it },
+                    placeholder = { Text(defaultLabel) },
+                    label = { Text(tr("Signature Name", "স্বাক্ষরের নাম")) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                // Checkerboard live preview showing transparency
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(145.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .checkerboardBackground()
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
+                        .padding(10.dp)
+                ) {
+                    Image(
+                        bitmap = previewBitmap.asImageBitmap(),
+                        contentDescription = tr("Transparent Signature Preview", "স্বাক্ষর প্রিভিউ"),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = tr("Transparent Background", "ব্যাকগ্রাউন্ড ট্রান্সপারেন্ট করুন"),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                    Switch(
+                        checked = removeBackground,
+                        onCheckedChange = { removeBackground = it },
+                        modifier = Modifier.testTag("sig_transparent_bg_switch")
+                    )
+                }
+
+                if (removeBackground) {
+                    Column {
+                        Text(
+                            text = tr("Background Removal Strength", "ব্যাকগ্রাউন্ড পরিষ্কারের মাত্রা"),
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                        Slider(
+                            value = tolerance,
+                            onValueChange = { tolerance = it },
+                            valueRange = 0.12f..0.65f
+                        )
+                    }
+                }
+
+                Text(
+                    text = tr("Ink Color", "কালির রঙ"),
+                    style = MaterialTheme.typography.labelMedium
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilterChip(
+                        selected = inkOverrideArgb == null,
+                        onClick = { inkOverrideArgb = null },
+                        label = { Text(tr("Original", "আসল")) }
+                    )
+                    val presetInks = listOf(
+                        0xFF1A1A1A.toInt(),
+                        0xFF102A56.toInt(),
+                        0xFF8E1D2A.toInt()
+                    )
+                    presetInks.forEach { argb ->
+                        val selected = inkOverrideArgb == argb
+                        Box(
+                            modifier = Modifier
+                                .size(30.dp)
+                                .clip(CircleShape)
+                                .background(Color(argb))
+                                .border(
+                                    width = if (selected) 2.5.dp else 1.dp,
+                                    color = if (selected) MaterialTheme.colorScheme.primary else Color.LightGray,
+                                    shape = CircleShape
+                                )
+                                .clickable { inkOverrideArgb = argb }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val outFile = SignatureImageProcessor.saveProcessedSignatureToFile(context, previewBitmap)
+                    onSaved(
+                        label.trim().ifBlank { defaultLabel },
+                        outFile,
+                        inkOverrideArgb ?: 0xFF102A56.toInt()
+                    )
+                },
+                modifier = Modifier.testTag("confirm_import_signature_button")
+            ) {
+                Text(tr("Save Signature", "লাইব্রেরীতে সেভ করুন"))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(tr("Cancel", "বাতিল"))
+            }
+        }
+    )
 }
 
 @Composable
@@ -255,7 +492,8 @@ fun SignaturePadDialog(
     onSaved: (label: String, pngFile: File, strokeColorArgb: Int) -> Unit
 ) {
     val context = LocalContext.current
-    var label by remember { mutableStateOf("আমার স্বাক্ষর") }
+    val defaultName = tr("My Signature", "আমার স্বাক্ষর")
+    var label by remember { mutableStateOf("") }
     var inkColorArgb by remember { mutableIntStateOf(0xFF102A56.toInt()) }
     var strokeWidth by remember { mutableFloatStateOf(7f) }
     var showColorPicker by remember { mutableStateOf(false) }
@@ -273,26 +511,31 @@ fun SignaturePadDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("নতুন সিগনেচার আঁকুন", style = MaterialTheme.typography.titleLarge) },
+        title = {
+            Text(
+                text = tr("Draw Signature (Transparent PNG)", "নতুন সিগনেচার আঁকুন"),
+                style = MaterialTheme.typography.titleLarge
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = label,
                     onValueChange = { label = it },
-                    label = { Text("স্বাক্ষরের নাম") },
+                    placeholder = { Text(defaultName) },
+                    label = { Text(tr("Signature Name", "স্বাক্ষরের নাম")) },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("signature_label_input")
                 )
 
-                // Ink Color Row
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("কালির রঙ:", style = MaterialTheme.typography.labelLarge)
+                    Text(tr("Ink:", "কালির রঙ:"), style = MaterialTheme.typography.labelLarge)
                     quickInkColors.forEach { argb ->
                         val selected = argb == inkColorArgb
                         Box(
@@ -309,12 +552,12 @@ fun SignaturePadDialog(
                         )
                     }
                     IconButton(onClick = { showColorPicker = true }) {
-                        Icon(NokshiIcons.Palette, contentDescription = "কালার পিকার")
+                        Icon(NokshiIcons.Palette, contentDescription = tr("Color Picker", "কালার পিকার"))
                     }
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("কলমের পুরুত্ব:", style = MaterialTheme.typography.labelMedium)
+                    Text(tr("Thickness:", "কলমের পুরুত্ব:"), style = MaterialTheme.typography.labelMedium)
                     Spacer(Modifier.width(8.dp))
                     Slider(
                         value = strokeWidth,
@@ -324,13 +567,12 @@ fun SignaturePadDialog(
                     )
                 }
 
-                // Drawing Canvas
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(175.dp)
                         .clip(RoundedCornerShape(14.dp))
-                        .background(Color.White)
+                        .checkerboardBackground()
                         .border(1.5.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(14.dp))
                         .onSizeChanged { padSize = it }
                         .pointerInput(inkColorArgb, strokeWidth) {
@@ -361,16 +603,15 @@ fun SignaturePadDialog(
                 ) {
                     if (completedStrokes.isEmpty() && activePoints.isEmpty()) {
                         Text(
-                            text = "এখানে আঙুল দিয়ে স্বাক্ষর আঁকুন",
-                            color = Color.Gray,
+                            text = tr("Sign here with finger or stylus", "এখানে আঙুল দিয়ে স্বাক্ষর আঁকুন"),
+                            color = Color.DarkGray,
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = Alignment.Center.let { Modifier.align(it) }
+                            modifier = Modifier.align(Alignment.Center)
                         )
                     }
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        // Subtle baseline
                         drawLine(
-                            color = Color(0xFFE2E8F0),
+                            color = Color(0xFFCBD5E1),
                             start = Offset(24f, size.height * 0.76f),
                             end = Offset(size.width - 24f, size.height * 0.76f),
                             strokeWidth = 2f
@@ -415,7 +656,7 @@ fun SignaturePadDialog(
                     },
                     modifier = Modifier.align(Alignment.End)
                 ) {
-                    Text("মুছে আবার আঁকুন")
+                    Text(tr("Clear Pad", "মুছে আবার আঁকুন"))
                 }
             }
         },
@@ -424,23 +665,23 @@ fun SignaturePadDialog(
                 enabled = completedStrokes.isNotEmpty(),
                 onClick = {
                     val out = exportSignaturePng(context, completedStrokes, padSize)
-                    onSaved(label.trim().ifBlank { "স্বাক্ষর" }, out, inkColorArgb)
+                    onSaved(label.trim().ifBlank { defaultName }, out, inkColorArgb)
                 },
                 modifier = Modifier.testTag("save_signature_button")
             ) {
-                Text("লাইব্রেরীতে সেভ করুন")
+                Text(tr("Save Signature", "লাইব্রেরীতে সেভ করুন"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("বাতিল")
+                Text(tr("Cancel", "বাতিল"))
             }
         }
     )
 
     if (showColorPicker) {
         ColorPickerDialog(
-            title = "স্বাক্ষরের কালির রঙ",
+            title = tr("Signature Ink Color", "স্বাক্ষরের কালির রঙ"),
             initialColorArgb = inkColorArgb,
             onDismiss = { showColorPicker = false },
             onColorSelected = {
@@ -448,6 +689,26 @@ fun SignaturePadDialog(
                 showColorPicker = false
             }
         )
+    }
+}
+
+private fun Modifier.checkerboardBackground(): Modifier = this.drawBehind {
+    val cell = 10.dp.toPx().coerceAtLeast(8f)
+    val light = Color(0xFFFFFFFF)
+    val gray = Color(0xFFF1F5F9)
+    drawRect(light)
+    val cols = (size.width / cell).toInt() + 1
+    val rows = (size.height / cell).toInt() + 1
+    for (r in 0 until rows) {
+        for (c in 0 until cols) {
+            if ((r + c) % 2 == 1) {
+                drawRect(
+                    color = gray,
+                    topLeft = Offset(c * cell, r * cell),
+                    size = Size(cell, cell)
+                )
+            }
+        }
     }
 }
 

@@ -26,4 +26,12 @@
     <string name="open_in_google_lens">Google Lens-এ ইমেজ খুলুন</string>
     <string name="copy_selected_text">সিলেক্ট করা অংশ কপি</string>
     <string name="copy_all_text">সম্পূর্ণ টেক্সট কপি</string>
+    <string name="manage_pages_title">পেজ ম্যানেজার (আগে-পিছে, রোটেশন ও ডিলিট)</string>
+    <string name="pinch_zoom_hint">দুই আঙুলে পেজ জুম করুন</string>
+    <string name="developer_credit_name">Developed by: Md A Jalil (15703)</string>
+    <string name="developer_credit_cadre">24th BCS Administration Cadre</string>
+    <string name="developer_credit_url">https://jalil.bcs24admin.org.bd/</string>
+    <string name="developer_credit_mobile">Mobile: +880 1717 501021</string>
+    <string name="copy_developer_mobile_desc">মোবাইল নাম্বার কপি করুন</string>
 </resources>
+

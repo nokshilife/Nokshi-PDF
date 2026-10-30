@@ -6,17 +6,25 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -24,67 +32,64 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
@@ -99,54 +104,123 @@ import com.example.data.SignatureEntity
 import com.example.data.WorkspacePdfEntity
 import com.example.engine.DetectedPdfTextLine
 import com.example.engine.EditorTool
+import com.example.engine.LazyPdfSession
 import com.example.engine.NormPoint
 import com.example.engine.PageEditItem
+import com.example.engine.PageOperationSpec
+import com.example.engine.PdfEditAndSecurityEngine
 import com.example.engine.ShapeType
 import com.example.ui.components.ColorPickerDialog
 import com.example.ui.components.NokshiIcons
 import com.example.ui.components.SignatureLibraryContent
+import com.example.ui.i18n.tr
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.abs
-import kotlin.math.atan2
-import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
-import kotlin.math.sin
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PdfEditorScreen(
     pdfEntity: WorkspacePdfEntity,
-    pageBitmap: Bitmap?,
-    currentPageIndex: Int,
-    totalPages: Int,
-    detectedTextLines: List<DetectedPdfTextLine>,
+    unlockedPassword: String,
     edits: List<PageEditItem>,
     signatures: List<SignatureEntity>,
     isBusy: Boolean,
     onBack: () -> Unit,
-    onSelectPage: (Int) -> Unit,
-    onAddBlankPage: () -> Unit,
+    onAddBlankPage: (List<PageEditItem>) -> Unit,
+    onApplyPageOperations: (List<PageOperationSpec>, List<PageEditItem>) -> Unit,
     onAddEditItem: (PageEditItem) -> Unit,
     onUpdateEditItem: (PageEditItem) -> Unit,
     onDeleteEditItem: (String) -> Unit,
     onUndoLastEdit: () -> Unit,
-    onSaveEdits: () -> Unit,
+    onSaveEdits: (List<PageEditItem>) -> Unit,
     onCreateSignature: (String, File, Int) -> Unit,
     onDeleteSignature: (SignatureEntity) -> Unit,
     onRequestPasswordDialog: () -> Unit,
-    onRunOcrOnPdf: () -> Unit,
+    onOpenInLens: (pageIndex: Int, allEdits: List<PageEditItem>) -> Unit,
+    onReadAloud: (pageIndex: Int, allEdits: List<PageEditItem>) -> Unit,
     onOpenPdfToImage: () -> Unit
 ) {
-    BackHandler(onBack = onBack)
-
     val context = LocalContext.current
-    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
+    val screenWidthPx = remember(configuration.screenWidthDp, density) {
+        with(density) { configuration.screenWidthDp.dp.roundToPx() }.coerceIn(900, 1800)
+    }
 
-    var activeTool by remember { mutableStateOf(EditorTool.SELECT) }
+    // Lazy multi-page session (supports 1,000+ pages without freezing)
+    var pdfSession by remember { mutableStateOf<LazyPdfSession?>(null) }
+    LaunchedEffect(pdfEntity.filePath, pdfEntity.updatedAt, unlockedPassword) {
+        val old = pdfSession
+        val opened = runCatching {
+            LazyPdfSession.open(context, File(pdfEntity.filePath), unlockedPassword)
+        }.getOrNull()
+        pdfSession = opened
+        old?.close()
+    }
+    DisposableEffect(Unit) {
+        onDispose { pdfSession?.close() }
+    }
+
+    val totalPages = (pdfSession?.pageCount ?: pdfEntity.pageCount).coerceAtLeast(1)
+    val lazyListState = rememberLazyListState()
+
+    // Scroll indicator page index (uses viewport center rather than top edge!)
+    val centerVisiblePageIndex by remember {
+        derivedStateOf {
+            val layoutInfo = lazyListState.layoutInfo
+            val items = layoutInfo.visibleItemsInfo
+            if (items.isEmpty()) {
+                0
+            } else {
+                val viewportMid = (layoutInfo.viewportStartOffset + layoutInfo.viewportEndOffset) / 2
+                val closest = items.minByOrNull { info ->
+                    val itemMid = info.offset + info.size / 2
+                    abs(itemMid - viewportMid)
+                }
+                (closest?.index ?: lazyListState.firstVisibleItemIndex)
+                    .coerceIn(0, (totalPages - 1).coerceAtLeast(0))
+            }
+        }
+    }
+
+    // STRICT TARGET PAGE INDEX (Requirement ৩):
+    // Locked to the exact page where the user double-tapped! All editing, Add Text, Add Image,
+    // Signature, Lens, and Read Aloud operations strictly use targetPageIndex!
+    var targetPageIndex by remember { mutableIntStateOf(0) }
+    LaunchedEffect(totalPages) {
+        if (targetPageIndex >= totalPages) {
+            targetPageIndex = (totalPages - 1).coerceAtLeast(0)
+        }
+    }
+
+    // Two-finger Pinch-to-Zoom + Pan state (Requirement ২)
+    var zoomScale by remember { mutableFloatStateOf(1f) }
+    var panOffset by remember { mutableStateOf(Offset.Zero) }
+    var viewportSize by remember { mutableStateOf(IntSize(1, 1)) }
+    val isZoomedIn = zoomScale > 1.02f
+
+    fun resetZoom() {
+        zoomScale = 1f
+        panOffset = Offset.Zero
+    }
+
+    // Requirement খ: Controls hidden initially; revealed on Double-Tap; hidden when scrolling starts or View is clicked
+    var areControlsVisible by remember { mutableStateOf(false) }
+    var showInitialDoubleTapHint by remember { mutableStateOf(true) }
+    LaunchedEffect(Unit) {
+        delay(2400)
+        showInitialDoubleTapHint = false
+    }
+
+    var activeTool by remember { mutableStateOf(EditorTool.VIEW) }
     var activeShapeType by remember { mutableStateOf(ShapeType.RECTANGLE) }
     var shapeFilled by remember { mutableStateOf(false) }
 
@@ -154,68 +228,123 @@ fun PdfEditorScreen(
     var highlighterColorArgb by remember { mutableIntStateOf(0xFFFFEB3B.toInt()) }
     var eraseColorArgb by remember { mutableIntStateOf(0xFFFFFFFF.toInt()) }
 
-    var strokeThicknessNorm by remember { mutableFloatStateOf(0.006f) }
+    var strokeThicknessNorm by remember { mutableFloatStateOf(0.0055f) }
     var highlighterThicknessNorm by remember { mutableFloatStateOf(0.028f) }
-    var zoomMultiplier by remember { mutableFloatStateOf(1f) }
 
-    var selectedEditId by remember { mutableStateOf<String?>(null) }
-    var showColorPickerFor by remember { mutableStateOf<String?>(null) } // "MAIN", "HIGHLIGHT", "ERASE"
-    var showSignatureSheet by remember { mutableStateOf(false) }
+    // Active floating item for smooth 60fps Drag + Resize + Rotate
+    var activeDraft by remember { mutableStateOf<ActiveDraftState?>(null) }
 
-    // Add / Edit Text Dialog State
-    var pendingAddTextPos by remember { mutableStateOf<NormPoint?>(null) }
-    var editingDetectedLine by remember { mutableStateOf<DetectedPdfTextLine?>(null) }
-
-    // Live Drag State
-    var dragStartNorm by remember { mutableStateOf<NormPoint?>(null) }
-    var dragCurrentNorm by remember { mutableStateOf<NormPoint?>(null) }
-    val liveHighlightPoints = remember { mutableStateListOf<NormPoint>() }
-    var canvasPixelSize by remember { mutableStateOf(IntSize(1, 1)) }
-
-    // Cache loaded stamp bitmaps for fast Canvas preview
-    val currentPageEdits = remember(edits, currentPageIndex) {
-        edits.filter { it.pageIndex == currentPageIndex }
-    }
-    val stampBitmaps = remember(currentPageEdits) {
-        val map = mutableMapOf<String, Bitmap>()
-        currentPageEdits.forEach { item ->
-            val path = when (item) {
-                is PageEditItem.ImageAddition -> item.imagePath
-                is PageEditItem.SignatureAddition -> item.signaturePath
-                else -> null
+    fun collectAllEditsIncludingDraft(): List<PageEditItem> {
+        val pendingDraftItem = activeDraft?.toPageEditItem()
+        return if (pendingDraftItem != null) {
+            if (activeDraft?.isExistingEdit == true) {
+                edits.map { if (it.id == pendingDraftItem.id) pendingDraftItem else it }
+            } else {
+                edits + pendingDraftItem
             }
-            if (path != null && !map.containsKey(path)) {
-                BitmapFactory.decodeFile(path)?.let { map[path] = it }
+        } else {
+            edits
+        }
+    }
+
+    fun commitActiveDraft() {
+        val draft = activeDraft ?: return
+        val committed = draft.toPageEditItem()
+        if (draft.isExistingEdit) {
+            onUpdateEditItem(committed)
+        } else {
+            onAddEditItem(committed)
+        }
+        activeDraft = null
+    }
+
+    BackHandler {
+        when {
+            activeDraft != null -> commitActiveDraft()
+            isZoomedIn -> resetZoom()
+            else -> onBack()
+        }
+    }
+
+    // Hide controls automatically as soon as continuous scrolling starts
+    LaunchedEffect(lazyListState.isScrollInProgress) {
+        if (lazyListState.isScrollInProgress && areControlsVisible) {
+            areControlsVisible = false
+        }
+    }
+
+    // Persistent decoded stamp ImageBitmap cache (never re-decoded during drag!)
+    val stampBitmaps = remember { mutableStateMapOf<String, ImageBitmap>() }
+    LaunchedEffect(edits, activeDraft?.id) {
+        val paths = buildSet {
+            edits.forEach {
+                when (it) {
+                    is PageEditItem.ImageAddition -> add(it.imagePath)
+                    is PageEditItem.SignatureAddition -> add(it.signaturePath)
+                    else -> Unit
+                }
+            }
+            when (val src = activeDraft?.sourceItem) {
+                is PageEditItem.ImageAddition -> add(src.imagePath)
+                is PageEditItem.SignatureAddition -> add(src.signaturePath)
+                else -> Unit
             }
         }
-        map
+        val missing = paths.filterNot { stampBitmaps.containsKey(it) }
+        if (missing.isNotEmpty()) {
+            withContext(Dispatchers.IO) {
+                val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
+                missing.forEach { p ->
+                    runCatching { BitmapFactory.decodeFile(p, opts) }.getOrNull()?.let { bmp ->
+                        withContext(Dispatchers.Main) {
+                            stampBitmaps[p] = bmp.asImageBitmap()
+                        }
+                    }
+                }
+            }
+        }
     }
+
+    // Extracted text lines cache per page (loaded lazily only when EDIT_TEXT tool is active)
+    val detectedLinesByPage = remember(pdfEntity.updatedAt) {
+        mutableStateMapOf<Int, List<DetectedPdfTextLine>>()
+    }
+
+    var showColorPickerFor by remember { mutableStateOf<String?>(null) }
+    var showSignatureSheet by remember { mutableStateOf(false) }
+    var showManagePagesSheet by remember { mutableStateOf(false) }
+    var lockedTargetPageForPicker by remember { mutableIntStateOf(0) }
+    var pendingAddTextPos by remember { mutableStateOf<NormPoint?>(null) }
+    var editingDetectedLine by remember { mutableStateOf<DetectedPdfTextLine?>(null) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
+            commitActiveDraft()
+            val destinationPage = lockedTargetPageForPicker.coerceIn(0, (totalPages - 1).coerceAtLeast(0))
             val cacheDir = File(context.cacheDir, "editor_stamps").apply { mkdirs() }
             val outFile = File(cacheDir, "img_${System.currentTimeMillis()}.png")
             runCatching {
+                val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
                 context.contentResolver.openInputStream(uri)?.use { input ->
-                    val bmp = BitmapFactory.decodeStream(input)
+                    val bmp = BitmapFactory.decodeStream(input, null, opts)
                     if (bmp != null) {
                         FileOutputStream(outFile).use { fos ->
-                            bmp.compress(Bitmap.CompressFormat.PNG, 95, fos)
+                            bmp.compress(Bitmap.CompressFormat.PNG, 100, fos)
                         }
-                        val ratio = (bmp.height.toFloat() / bmp.width.coerceAtLeast(1)).coerceIn(0.3f, 1.8f)
-                        bmp.recycle()
+                        stampBitmaps[outFile.absolutePath] = bmp.asImageBitmap()
+                        val ratio = (bmp.height.toFloat() / bmp.width.coerceAtLeast(1)).coerceIn(0.25f, 1.8f)
                         val item = PageEditItem.ImageAddition(
-                            pageIndex = currentPageIndex,
+                            pageIndex = destinationPage,
                             normX = 0.28f,
-                            normY = 0.30f,
-                            normWidth = 0.38f,
-                            normHeight = (0.38f * ratio).coerceAtMost(0.55f),
+                            normY = 0.28f,
+                            normWidth = 0.42f,
+                            normHeight = (0.42f * ratio).coerceAtMost(0.55f),
                             imagePath = outFile.absolutePath
                         )
-                        onAddEditItem(item)
-                        selectedEditId = item.id
+                        targetPageIndex = destinationPage
+                        activeDraft = ActiveDraftState(item, isExistingEdit = false)
                         activeTool = EditorTool.SELECT
                     }
                 }
@@ -223,78 +352,541 @@ fun PdfEditorScreen(
         }
     }
 
-    LaunchedEffect(currentPageIndex) {
-        selectedEditId = null
+    // Helper to place a signature strictly onto the locked double-tapped target page!
+    fun placeSignatureOnTargetPage(sig: SignatureEntity) {
+        commitActiveDraft()
+        val sigFile = File(sig.imagePath)
+        if (!sigFile.exists()) return
+        val destinationPage = lockedTargetPageForPicker.coerceIn(0, (totalPages - 1).coerceAtLeast(0))
+        val opts = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888 }
+        val bmp = BitmapFactory.decodeFile(sigFile.absolutePath, opts)
+        val aspect = if (bmp != null) {
+            stampBitmaps[sigFile.absolutePath] = bmp.asImageBitmap()
+            (bmp.height.toFloat() / bmp.width.coerceAtLeast(1)).coerceIn(0.18f, 1.1f)
+        } else {
+            0.38f
+        }
+        val sigItem = PageEditItem.SignatureAddition(
+            pageIndex = destinationPage,
+            normX = 0.28f,
+            normY = 0.34f,
+            normWidth = 0.38f,
+            normHeight = (0.38f * aspect).coerceIn(0.07f, 0.32f),
+            signaturePath = sig.imagePath
+        )
+        targetPageIndex = destinationPage
+        activeDraft = ActiveDraftState(sigItem, isExistingEdit = false)
+        activeTool = EditorTool.SELECT
+        showSignatureSheet = false
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = pdfEntity.title,
-                            style = MaterialTheme.typography.titleMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+    val isDrawingGestureTool = activeTool == EditorTool.FREEHAND ||
+        activeTool == EditorTool.HIGHLIGHTER ||
+        activeTool == EditorTool.SQUARE_ERASE ||
+        activeTool == EditorTool.SHAPE
+
+    val scrollEnabled = !isDrawingGestureTool && activeDraft == null && !isZoomedIn
+    val isEditingScoped = areControlsVisible || activeTool != EditorTool.VIEW || activeDraft != null
+
+    val currentActiveTool by rememberUpdatedState(activeTool)
+    val currentHasDraft by rememberUpdatedState(activeDraft != null)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF1F2227))
+    ) {
+        // FULL-WIDTH CONTINUOUS LAZY PDF VIEWPORT + TWO-FINGER PINCH ZOOM + SINGLE-PAGE CENTERING
+        if (pdfSession == null) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                CircularProgressIndicator(color = Color.White)
+            }
+        } else {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { viewportSize = it }
+                    .pointerInput(Unit) {
+                        // Smooth two-finger pinch-to-zoom (1x..4x) + 1-finger pan when zoomed in (Requirement ২)
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            do {
+                                val event = awaitPointerEvent()
+                                val pressedCount = event.changes.count { it.pressed }
+                                val canOneFingerPan = zoomScale > 1.02f &&
+                                    currentActiveTool == EditorTool.VIEW &&
+                                    !currentHasDraft
+
+                                if (pressedCount >= 2 || (pressedCount == 1 && canOneFingerPan)) {
+                                    val zoomChange = if (pressedCount >= 2) event.calculateZoom() else 1f
+                                    val panChange = event.calculatePan()
+                                    val centroid = event.calculateCentroid(useCurrent = false)
+
+                                    val oldScale = zoomScale
+                                    val newScale = (oldScale * zoomChange).coerceIn(1f, 4f)
+                                    val vw = viewportSize.width.coerceAtLeast(1).toFloat()
+                                    val vh = viewportSize.height.coerceAtLeast(1).toFloat()
+
+                                    if (newScale <= 1.01f) {
+                                        zoomScale = 1f
+                                        panOffset = Offset.Zero
+                                    } else {
+                                        val effectiveZoom = newScale / oldScale
+                                        val rawOffset = if (centroid != Offset.Unspecified && pressedCount >= 2) {
+                                            (panOffset - centroid) * effectiveZoom + centroid + panChange
+                                        } else {
+                                            panOffset + panChange
+                                        }
+                                        val maxPanX = 0f
+                                        val minPanX = -(vw * (newScale - 1f))
+                                        val maxPanY = 0f
+                                        val minPanY = -(vh * (newScale - 1f))
+                                        zoomScale = newScale
+                                        panOffset = Offset(
+                                            x = rawOffset.x.coerceIn(minPanX, maxPanX),
+                                            y = rawOffset.y.coerceIn(minPanY, maxPanY)
+                                        )
+                                    }
+
+                                    if (pressedCount >= 2 || canOneFingerPan) {
+                                        event.changes.forEach { ch ->
+                                            if (ch.positionChanged()) ch.consume()
+                                        }
+                                    }
+                                }
+                            } while (event.changes.any { it.pressed })
+                        }
+                    }
+            ) {
+                LazyColumn(
+                    state = lazyListState,
+                    userScrollEnabled = scrollEnabled,
+                    contentPadding = PaddingValues(0.dp),
+                    // Requirement ১: Center 1-page PDFs vertically instead of sticking to the very top!
+                    verticalArrangement = if (totalPages == 1) {
+                        Arrangement.Center
+                    } else {
+                        Arrangement.spacedBy(4.dp)
+                    },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            transformOrigin = TransformOrigin(0f, 0f)
+                            scaleX = zoomScale
+                            scaleY = zoomScale
+                            translationX = panOffset.x
+                            translationY = panOffset.y
+                        }
+                        .testTag("lazy_pdf_viewer")
+                ) {
+                    items(
+                        count = totalPages,
+                        key = { pageIdx -> pageIdx }
+                    ) { pageIdx ->
+                        val pageEdits = remember(edits, pageIdx, activeDraft?.id) {
+                            edits.filter { it.pageIndex == pageIdx && it.id != activeDraft?.id }
+                        }
+                        val draftOnThisPage = activeDraft?.takeIf { it.pageIndex == pageIdx }
+                        // Requirement ৩: Editing operations are strictly scoped to the double-tapped targetPageIndex!
+                        val isTargetEditablePage = pageIdx == targetPageIndex
+
+                        // Lazy-load text lines only when EDIT_TEXT is active on the target page
+                        LaunchedEffect(activeTool, pageIdx, targetPageIndex, pdfEntity.updatedAt) {
+                            if (activeTool == EditorTool.EDIT_TEXT &&
+                                isTargetEditablePage &&
+                                !detectedLinesByPage.containsKey(pageIdx)
+                            ) {
+                                val lines = runCatching {
+                                    PdfEditAndSecurityEngine.extractPageTextLines(
+                                        context = context,
+                                        file = File(pdfEntity.filePath),
+                                        pageIndex = pageIdx,
+                                        password = unlockedPassword
+                                    )
+                                }.getOrDefault(emptyList())
+                                detectedLinesByPage[pageIdx] = lines
+                            }
+                        }
+
+                        FullWidthLazyPdfPageItem(
+                            session = pdfSession!!,
+                            pageIndex = pageIdx,
+                            isTargetEditablePage = isTargetEditablePage,
+                            showTargetBorder = isEditingScoped && totalPages > 1 && isTargetEditablePage,
+                            targetRenderWidthPx = screenWidthPx,
+                            activeTool = if (isTargetEditablePage) activeTool else EditorTool.VIEW,
+                            activeShapeType = activeShapeType,
+                            shapeFilled = shapeFilled,
+                            activeColorArgb = activeColorArgb,
+                            highlighterColorArgb = highlighterColorArgb,
+                            eraseColorArgb = eraseColorArgb,
+                            strokeThicknessNorm = strokeThicknessNorm,
+                            highlighterThicknessNorm = highlighterThicknessNorm,
+                            committedPageEdits = pageEdits,
+                            detectedLines = if (isTargetEditablePage) detectedLinesByPage[pageIdx].orEmpty() else emptyList(),
+                            activeDraftOnPage = draftOnThisPage,
+                            hasAnyActiveDraft = activeDraft != null,
+                            stampBitmaps = stampBitmaps,
+                            onDoubleTapPage = {
+                                if (activeDraft != null) {
+                                    // Requirement গ: Double-tap outside applies the floating item!
+                                    commitActiveDraft()
+                                    if (pageIdx != targetPageIndex) {
+                                        targetPageIndex = pageIdx
+                                        lockedTargetPageForPicker = pageIdx
+                                    }
+                                } else {
+                                    // Requirement খ & ৩: Lock targetPageIndex strictly to THIS double-tapped page!
+                                    if (!areControlsVisible) {
+                                        targetPageIndex = pageIdx
+                                        lockedTargetPageForPicker = pageIdx
+                                        areControlsVisible = true
+                                    } else if (targetPageIndex != pageIdx) {
+                                        // Double-tapping a different page while tools are open switches focus strictly to that page
+                                        targetPageIndex = pageIdx
+                                        lockedTargetPageForPicker = pageIdx
+                                    } else {
+                                        activeTool = EditorTool.VIEW
+                                        areControlsVisible = false
+                                    }
+                                }
+                            },
+                            onRequestAddTextAt = { pt ->
+                                if (isTargetEditablePage) {
+                                    commitActiveDraft()
+                                    lockedTargetPageForPicker = pageIdx
+                                    pendingAddTextPos = pt
+                                }
+                            },
+                            onRequestEditDetectedLine = { line ->
+                                if (isTargetEditablePage) {
+                                    commitActiveDraft()
+                                    editingDetectedLine = line
+                                }
+                            },
+                            onRequestOpenSignatureSheet = {
+                                if (isTargetEditablePage) {
+                                    lockedTargetPageForPicker = pageIdx
+                                    showSignatureSheet = true
+                                }
+                            },
+                            onSelectExistingEditForTransform = { hitItem ->
+                                if (isTargetEditablePage || !isEditingScoped) {
+                                    commitActiveDraft()
+                                    targetPageIndex = pageIdx
+                                    lockedTargetPageForPicker = pageIdx
+                                    activeDraft = ActiveDraftState(hitItem, isExistingEdit = true)
+                                    activeTool = EditorTool.SELECT
+                                }
+                            },
+                            onStartNewDraft = { newItem ->
+                                if (isTargetEditablePage) {
+                                    commitActiveDraft()
+                                    activeDraft = ActiveDraftState(newItem, isExistingEdit = false)
+                                }
+                            },
+                            onCommitStrokeEdit = { strokeItem ->
+                                if (isTargetEditablePage) {
+                                    onAddEditItem(strokeItem)
+                                }
+                            },
+                            onApplyActiveDraft = { commitActiveDraft() },
+                            onDeleteActiveDraft = {
+                                val draft = activeDraft
+                                if (draft != null) {
+                                    if (draft.isExistingEdit) {
+                                        onDeleteEditItem(draft.id)
+                                    }
+                                    activeDraft = null
+                                }
+                            }
                         )
-                        Text(
-                            text = "পেজ ${currentPageIndex + 1}/$totalPages • পরিবর্তিত আইটেম: ${edits.size}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("editor_back_button")) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "ফিরে যান")
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = onUndoLastEdit,
-                        enabled = edits.isNotEmpty(),
-                        modifier = Modifier.testTag("editor_undo_button")
-                    ) {
-                        Icon(NokshiIcons.Undo, contentDescription = "আনডু")
-                    }
-                    IconButton(
-                        onClick = onRunOcrOnPdf,
-                        modifier = Modifier.testTag("editor_ocr_button")
-                    ) {
-                        Icon(NokshiIcons.DocumentScanner, contentDescription = "OCR এক্সট্রাক্ট")
-                    }
-                    IconButton(
-                        onClick = onOpenPdfToImage,
-                        modifier = Modifier.testTag("editor_pdf_to_img_button")
-                    ) {
-                        Icon(NokshiIcons.Image, contentDescription = "PDF থেকে ইমেজ")
-                    }
-                    IconButton(
-                        onClick = onRequestPasswordDialog,
-                        modifier = Modifier.testTag("editor_lock_button")
-                    ) {
-                        Icon(Icons.Default.Lock, contentDescription = "পাসওয়ার্ড সুরক্ষা")
-                    }
-                    Button(
-                        onClick = onSaveEdits,
-                        enabled = !isBusy,
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier
-                            .padding(end = 6.dp)
-                            .testTag("editor_save_button")
-                    ) {
-                        Icon(NokshiIcons.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("সেভ")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                }
+            }
+        }
+
+        // Subtle Page Counter Pill + Zoom Reset Chip + Return-to-View Chip
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(
+                    end = 12.dp,
+                    bottom = if (areControlsVisible) 142.dp else 18.dp
                 )
-            )
-        },
-        bottomBar = {
+        ) {
+            if (isZoomedIn) {
+                AssistChip(
+                    onClick = { resetZoom() },
+                    label = { Text("${(zoomScale * 100).roundToInt()}% • " + tr("Reset", "১০০%")) },
+                    leadingIcon = {
+                        Icon(NokshiIcons.ZoomIn, contentDescription = null, modifier = Modifier.size(16.dp))
+                    },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = Color(0xEE1A1C1E),
+                        labelColor = Color.White,
+                        leadingIconContentColor = Color(0xFFFFCA28)
+                    ),
+                    modifier = Modifier.testTag("reset_zoom_chip")
+                )
+            }
+            if (!areControlsVisible && isDrawingGestureTool) {
+                AssistChip(
+                    onClick = {
+                        commitActiveDraft()
+                        activeTool = EditorTool.VIEW
+                    },
+                    label = { Text(tr("View / Scroll", "ভিউ / স্ক্রোল")) },
+                    leadingIcon = {
+                        Icon(NokshiIcons.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
+                    },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = Color(0xEE1A1C1E),
+                        labelColor = Color.White,
+                        leadingIconContentColor = Color(0xFFFFCA28)
+                    )
+                )
+            }
+            val shownPageIdx = if (isEditingScoped) targetPageIndex else centerVisiblePageIndex
+            Surface(
+                color = if (isEditingScoped) Color(0xEE8E1D2A) else Color(0xBB141619),
+                contentColor = Color.White,
+                shape = RoundedCornerShape(999.dp)
+            ) {
+                Text(
+                    text = if (isEditingScoped) {
+                        tr("Target Page ${shownPageIdx + 1} / $totalPages", "পেজ ${shownPageIdx + 1} / $totalPages (এডিট)")
+                    } else {
+                        "${shownPageIdx + 1} / $totalPages"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
+                )
+            }
+        }
+
+        // Initial non-blocking Double-Tap & Pinch-Zoom Hint Pill
+        AnimatedVisibility(
+            visible = showInitialDoubleTapHint && !areControlsVisible,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 12.dp)
+        ) {
+            Surface(
+                color = Color(0xDD1A1C1E),
+                contentColor = Color.White,
+                shape = RoundedCornerShape(999.dp),
+                shadowElevation = 6.dp
+            ) {
+                Text(
+                    text = tr(
+                        "Pinch with 2 fingers to Zoom • Double-tap a page for Tools",
+                        "দুই আঙুলে জুম করুন • নির্দিষ্ট পেজে ডাবল ট্যাপ করলে টুলস আসবে"
+                    ),
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+            }
+        }
+
+        // FLOATING TOP CONTROLS BAR (Revealed on Double-Tap, Scoped strictly to targetPageIndex!)
+        AnimatedVisibility(
+            visible = areControlsVisible,
+            enter = slideInVertically { -it } + fadeIn(),
+            exit = slideOutVertically { -it } + fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
+            Surface(
+                tonalElevation = 8.dp,
+                shadowElevation = 10.dp,
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(bottom = 6.dp)
+                ) {
+                    // Row 1: Back, Title + Active Target Page Badge, Undo, View (Hide), Save
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                commitActiveDraft()
+                                onBack()
+                            },
+                            modifier = Modifier.testTag("editor_back_button")
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Back", "ফিরে যান"))
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = pdfEntity.title,
+                                style = MaterialTheme.typography.titleSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = tr(
+                                    "🎯 Active Page ${targetPageIndex + 1} of $totalPages",
+                                    "🎯 ডাবল ট্যাপ করা পেজ: ${targetPageIndex + 1} / $totalPages"
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        IconButton(
+                            onClick = onUndoLastEdit,
+                            enabled = edits.isNotEmpty(),
+                            modifier = Modifier.testTag("editor_undo_button")
+                        ) {
+                            Icon(NokshiIcons.Undo, contentDescription = tr("Undo", "আনডু"))
+                        }
+                        IconButton(
+                            onClick = {
+                                commitActiveDraft()
+                                activeTool = EditorTool.VIEW
+                                areControlsVisible = false
+                            },
+                            modifier = Modifier.testTag("editor_view_hide_button")
+                        ) {
+                            Icon(NokshiIcons.Visibility, contentDescription = tr("View Mode (Hide Tools)", "ভিউ মোড"))
+                        }
+                        Button(
+                            onClick = {
+                                val allEdits = collectAllEditsIncludingDraft()
+                                activeDraft = null
+                                onSaveEdits(allEdits)
+                            },
+                            enabled = !isBusy,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .padding(end = 4.dp)
+                                .testTag("editor_save_button")
+                        ) {
+                            Icon(NokshiIcons.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(tr("Save", "সেভ"))
+                        }
+                    }
+
+                    // Row 2: Side-by-Side "Open in Lens" + "Read Aloud" (for targetPageIndex!) + Manage Pages + Add Page + Image + Lock
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                val allEdits = collectAllEditsIncludingDraft()
+                                onOpenInLens(targetPageIndex, allEdits)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondary,
+                                contentColor = MaterialTheme.colorScheme.onSecondary
+                            ),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("editor_open_in_lens_button")
+                        ) {
+                            Icon(NokshiIcons.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = tr("Lens (P.${targetPageIndex + 1})", "Lens (পেজ ${targetPageIndex + 1})"),
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                val allEdits = collectAllEditsIncludingDraft()
+                                onReadAloud(targetPageIndex, allEdits)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF0F6E56),
+                                contentColor = Color.White
+                            ),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("editor_read_aloud_button")
+                        ) {
+                            Icon(NokshiIcons.VolumeUp, contentDescription = null, modifier = Modifier.size(15.dp))
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = tr("Read (P.${targetPageIndex + 1})", "Read (পেজ ${targetPageIndex + 1})"),
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        // Requirement ৪: Manage Pages (Delete, Reorder, Rotate Specific Pages)
+                        IconButton(
+                            onClick = {
+                                commitActiveDraft()
+                                showManagePagesSheet = true
+                            },
+                            modifier = Modifier.testTag("editor_manage_pages_button")
+                        ) {
+                            Icon(
+                                NokshiIcons.GridView,
+                                contentDescription = tr("Manage Pages (Delete, Reorder, Rotate)", "পেজ ম্যানেজার (ডিলিট, আগে-পিছে, রোটেশন)")
+                            )
+                        }
+                        IconButton(
+                            onClick = {
+                                val allEdits = collectAllEditsIncludingDraft()
+                                activeDraft = null
+                                onAddBlankPage(allEdits)
+                            },
+                            modifier = Modifier.testTag("editor_add_blank_page_button")
+                        ) {
+                            Icon(NokshiIcons.NoteAdd, contentDescription = tr("Add Blank Page", "নতুন সাদা পেজ"))
+                        }
+                        IconButton(
+                            onClick = onOpenPdfToImage,
+                            modifier = Modifier.testTag("editor_pdf_to_image_button")
+                        ) {
+                            Icon(NokshiIcons.Image, contentDescription = tr("PDF to Image", "PDF থেকে ইমেজ"))
+                        }
+                        IconButton(
+                            onClick = onRequestPasswordDialog,
+                            modifier = Modifier.testTag("editor_password_button")
+                        ) {
+                            Icon(Icons.Default.Lock, contentDescription = tr("Password Lock", "পাসওয়ার্ড"))
+                        }
+                    }
+                }
+            }
+        }
+
+        // FLOATING BOTTOM TOOL DOCK (Revealed on Double-Tap, Scoped strictly to targetPageIndex!)
+        AnimatedVisibility(
+            visible = areControlsVisible,
+            enter = slideInVertically { it } + fadeIn(),
+            exit = slideOutVertically { it } + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
             EditorBottomToolDock(
                 activeTool = activeTool,
                 activeShapeType = activeShapeType,
@@ -304,10 +896,14 @@ fun PdfEditorScreen(
                 eraseColorArgb = eraseColorArgb,
                 strokeThicknessNorm = strokeThicknessNorm,
                 highlighterThicknessNorm = highlighterThicknessNorm,
-                selectedItem = currentPageEdits.find { it.id == selectedEditId },
-                detectedCount = detectedTextLines.size,
+                activeDraft = activeDraft,
                 onSelectTool = { tool ->
+                    if (tool != EditorTool.SELECT) {
+                        commitActiveDraft()
+                    }
                     activeTool = tool
+                    // Lock the target page to exact double-tapped targetPageIndex!
+                    lockedTargetPageForPicker = targetPageIndex
                     when (tool) {
                         EditorTool.ADD_IMAGE -> {
                             imagePickerLauncher.launch(
@@ -317,689 +913,159 @@ fun PdfEditorScreen(
                         EditorTool.SIGNATURE -> {
                             showSignatureSheet = true
                         }
+                        EditorTool.ADD_TEXT -> {
+                            pendingAddTextPos = NormPoint(0.24f, 0.34f)
+                        }
                         else -> Unit
                     }
+                },
+                onHideControlsForViewing = {
+                    commitActiveDraft()
+                    activeTool = EditorTool.VIEW
+                    areControlsVisible = false
                 },
                 onSelectShapeType = { activeShapeType = it },
                 onToggleShapeFilled = { shapeFilled = it },
                 onStrokeThicknessChange = { strokeThicknessNorm = it },
                 onHighlighterThicknessChange = { highlighterThicknessNorm = it },
+                onQuickFreehandColor = { activeColorArgb = it },
                 onQuickHighlightColor = { highlighterColorArgb = it },
                 onOpenColorPicker = { target -> showColorPickerFor = target },
-                onResizeSelected = { scaleDelta ->
-                    val sel = currentPageEdits.find { it.id == selectedEditId } ?: return@EditorBottomToolDock
-                    when (sel) {
-                        is PageEditItem.ImageAddition -> onUpdateEditItem(
-                            sel.copy(
-                                normWidth = (sel.normWidth + scaleDelta).coerceIn(0.10f, 0.90f),
-                                normHeight = (sel.normHeight + scaleDelta * 0.75f).coerceIn(0.08f, 0.90f)
-                            )
-                        )
-                        is PageEditItem.SignatureAddition -> onUpdateEditItem(
-                            sel.copy(
-                                normWidth = (sel.normWidth + scaleDelta).coerceIn(0.10f, 0.80f),
-                                normHeight = (sel.normHeight + scaleDelta * 0.45f).coerceIn(0.05f, 0.50f)
-                            )
-                        )
-                        is PageEditItem.TextAddition -> onUpdateEditItem(
-                            sel.copy(fontSizePt = (sel.fontSizePt + scaleDelta * 40f).coerceIn(9f, 48f))
-                        )
-                        else -> Unit
-                    }
-                },
-                onDeleteSelected = {
-                    selectedEditId?.let {
-                        onDeleteEditItem(it)
-                        selectedEditId = null
+                onApplyActiveDraft = { commitActiveDraft() },
+                onDeleteActiveDraft = {
+                    val d = activeDraft
+                    if (d != null) {
+                        if (d.isExistingEdit) onDeleteEditItem(d.id)
+                        activeDraft = null
                     }
                 }
             )
         }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
-        ) {
-            // Page Navigation + Zoom Strip
-            Surface(
-                tonalElevation = 2.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = { if (currentPageIndex > 0) onSelectPage(currentPageIndex - 1) },
-                            enabled = currentPageIndex > 0
-                        ) {
-                            Icon(NokshiIcons.NavigateBefore, contentDescription = "আগের পেজ")
-                        }
-                        Text(
-                            text = "পেজ ${currentPageIndex + 1} / $totalPages",
-                            style = MaterialTheme.typography.labelLarge
-                        )
-                        IconButton(
-                            onClick = { if (currentPageIndex < totalPages - 1) onSelectPage(currentPageIndex + 1) },
-                            enabled = currentPageIndex < totalPages - 1
-                        ) {
-                            Icon(NokshiIcons.NavigateNext, contentDescription = "পরের পেজ")
-                        }
-                    }
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        AssistChip(
-                            onClick = {
-                                zoomMultiplier = when (zoomMultiplier) {
-                                    1f -> 1.4f
-                                    1.4f -> 1.8f
-                                    else -> 1f
-                                }
-                            },
-                            label = { Text("${(zoomMultiplier * 100).roundToInt()}%") },
-                            leadingIcon = {
-                                Icon(NokshiIcons.ZoomIn, contentDescription = null, modifier = Modifier.size(16.dp))
-                            }
-                        )
-                        AssistChip(
-                            onClick = onAddBlankPage,
-                            label = { Text("+ নতুন পেজ") },
-                            leadingIcon = {
-                                Icon(NokshiIcons.NoteAdd, contentDescription = null, modifier = Modifier.size(16.dp))
-                            }
-                        )
-                    }
-                }
-            }
-
-            // Contextual Hint Banner
-            Surface(
-                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                val hint = when (activeTool) {
-                    EditorTool.SELECT -> "যেকোনো যোগ করা টেক্সট, ছবি, শেপ বা সিগনেচারে ট্যাপ করে ড্র্যাগ করে সরান।"
-                    EditorTool.EDIT_TEXT -> if (detectedTextLines.isNotEmpty())
-                        "নীল ড্যাশ বক্স যুক্ত যেকোনো লেখায় ট্যাপ করে লেখা পরিবর্তন করুন (${detectedTextLines.size}টি লাইন পাওয়া গেছে)।"
-                    else
-                        "এই পেজে আলাদা টেক্সট লেয়ার নেই—‘স্কয়ার ইরেজ’ দিয়ে মুছে ‘টেক্সট যোগ’ ব্যবহার করুন।"
-                    EditorTool.ADD_TEXT -> "নতুন বাংলা বা ইংরেজি টেক্সট বসাতে পেজের যেকোনো জায়গায় ট্যাপ করুন।"
-                    EditorTool.ADD_IMAGE -> "গ্যালারি থেকে ছবি বেছে নিয়ে পেজে বসান ও ড্র্যাগ করে সাজান।"
-                    EditorTool.SQUARE_ERASE -> "যে অংশটুকু মুছে ফেলতে চান তার ওপর আঙুল টেনে চারকোণা বক্স আঁকুন।"
-                    EditorTool.HIGHLIGHTER -> "গুরুত্বপূর্ণ লেখার ওপর আঙুল টেনে হাইলাইট করুন।"
-                    EditorTool.SHAPE -> "পেজের ওপর আঙুল টেনে ${activeShapeType.labelBn} আঁকুন।"
-                    EditorTool.SIGNATURE -> "নিজের সিগনেচার লাইব্রেরী থেকে স্বাক্ষর বেছে নিয়ে পেজে বসান।"
-                }
-                Text(
-                    text = hint,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                )
-            }
-
-            // PDF Interactive Page Canvas Viewport
-            BoxWithConstraints(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .horizontalScroll(rememberScrollState())
-                    .padding(16.dp)
-            ) {
-                if (pageBitmap == null || isBusy) {
-                    CircularProgressIndicator()
-                } else {
-                    val aspect = pageBitmap.width.toFloat() / pageBitmap.height.coerceAtLeast(1).toFloat()
-                    val baseWidth = maxWidth.coerceAtMost(560.dp) * zoomMultiplier
-
-                    Box(
-                        modifier = Modifier
-                            .width(baseWidth)
-                            .aspectRatio(aspect)
-                            .shadow(6.dp, RoundedCornerShape(6.dp))
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color.White)
-                            .onSizeChanged { canvasPixelSize = it }
-                            .pointerInput(
-                                activeTool,
-                                activeShapeType,
-                                shapeFilled,
-                                activeColorArgb,
-                                highlighterColorArgb,
-                                eraseColorArgb,
-                                strokeThicknessNorm,
-                                highlighterThicknessNorm,
-                                currentPageIndex,
-                                currentPageEdits,
-                                detectedTextLines
-                            ) {
-                                detectTapGestures { offset ->
-                                    val w = size.width.coerceAtLeast(1).toFloat()
-                                    val h = size.height.coerceAtLeast(1).toFloat()
-                                    val nx = (offset.x / w).coerceIn(0f, 1f)
-                                    val ny = (offset.y / h).coerceIn(0f, 1f)
-
-                                    when (activeTool) {
-                                        EditorTool.ADD_TEXT -> {
-                                            pendingAddTextPos = NormPoint(nx, ny)
-                                        }
-                                        EditorTool.EDIT_TEXT -> {
-                                            val hitLine = detectedTextLines.firstOrNull { line ->
-                                                nx in (line.normLeft - 0.02f)..(line.normRight + 0.02f) &&
-                                                    ny in (line.normTop - 0.015f)..(line.normBottom + 0.015f)
-                                            }
-                                            if (hitLine != null) {
-                                                editingDetectedLine = hitLine
-                                            }
-                                        }
-                                        EditorTool.SIGNATURE -> {
-                                            showSignatureSheet = true
-                                        }
-                                        else -> {
-                                            val hit = hitTestEditItem(currentPageEdits, nx, ny)
-                                            selectedEditId = hit?.id
-                                        }
-                                    }
-                                }
-                            }
-                            .pointerInput(
-                                activeTool,
-                                activeShapeType,
-                                shapeFilled,
-                                activeColorArgb,
-                                highlighterColorArgb,
-                                eraseColorArgb,
-                                strokeThicknessNorm,
-                                highlighterThicknessNorm,
-                                currentPageIndex,
-                                selectedEditId,
-                                currentPageEdits
-                            ) {
-                                detectDragGestures(
-                                    onDragStart = { startOffset ->
-                                        val w = size.width.coerceAtLeast(1).toFloat()
-                                        val h = size.height.coerceAtLeast(1).toFloat()
-                                        val nx = (startOffset.x / w).coerceIn(0f, 1f)
-                                        val ny = (startOffset.y / h).coerceIn(0f, 1f)
-
-                                        when (activeTool) {
-                                            EditorTool.SELECT -> {
-                                                val hit = hitTestEditItem(currentPageEdits, nx, ny)
-                                                selectedEditId = hit?.id
-                                            }
-                                            EditorTool.HIGHLIGHTER -> {
-                                                liveHighlightPoints.clear()
-                                                liveHighlightPoints.add(NormPoint(nx, ny))
-                                            }
-                                            EditorTool.SQUARE_ERASE, EditorTool.SHAPE -> {
-                                                dragStartNorm = NormPoint(nx, ny)
-                                                dragCurrentNorm = NormPoint(nx, ny)
-                                            }
-                                            else -> Unit
-                                        }
-                                    },
-                                    onDrag = { change, dragAmount ->
-                                        val w = size.width.coerceAtLeast(1).toFloat()
-                                        val h = size.height.coerceAtLeast(1).toFloat()
-                                        val nx = (change.position.x / w).coerceIn(0f, 1f)
-                                        val ny = (change.position.y / h).coerceIn(0f, 1f)
-                                        val dx = dragAmount.x / w
-                                        val dy = dragAmount.y / h
-
-                                        when (activeTool) {
-                                            EditorTool.SELECT -> {
-                                                val target = currentPageEdits.find { it.id == selectedEditId }
-                                                if (target != null) {
-                                                    change.consume()
-                                                    onUpdateEditItem(moveEditItem(target, dx, dy))
-                                                }
-                                            }
-                                            EditorTool.HIGHLIGHTER -> {
-                                                change.consume()
-                                                liveHighlightPoints.add(NormPoint(nx, ny))
-                                            }
-                                            EditorTool.SQUARE_ERASE, EditorTool.SHAPE -> {
-                                                change.consume()
-                                                dragCurrentNorm = NormPoint(nx, ny)
-                                            }
-                                            else -> Unit
-                                        }
-                                    },
-                                    onDragEnd = {
-                                        when (activeTool) {
-                                            EditorTool.HIGHLIGHTER -> {
-                                                if (liveHighlightPoints.size >= 2) {
-                                                    onAddEditItem(
-                                                        PageEditItem.HighlighterStroke(
-                                                            pageIndex = currentPageIndex,
-                                                            points = liveHighlightPoints.toList(),
-                                                            colorArgb = highlighterColorArgb,
-                                                            strokeWidthNorm = highlighterThicknessNorm
-                                                        )
-                                                    )
-                                                }
-                                                liveHighlightPoints.clear()
-                                            }
-                                            EditorTool.SQUARE_ERASE -> {
-                                                val s = dragStartNorm
-                                                val e = dragCurrentNorm
-                                                if (s != null && e != null &&
-                                                    abs(e.x - s.x) > 0.01f && abs(e.y - s.y) > 0.01f
-                                                ) {
-                                                    val erase = PageEditItem.SquareErase(
-                                                        pageIndex = currentPageIndex,
-                                                        normLeft = min(s.x, e.x),
-                                                        normTop = min(s.y, e.y),
-                                                        normRight = max(s.x, e.x),
-                                                        normBottom = max(s.y, e.y),
-                                                        fillColorArgb = eraseColorArgb
-                                                    )
-                                                    onAddEditItem(erase)
-                                                    selectedEditId = erase.id
-                                                }
-                                                dragStartNorm = null
-                                                dragCurrentNorm = null
-                                            }
-                                            EditorTool.SHAPE -> {
-                                                val s = dragStartNorm
-                                                val e = dragCurrentNorm
-                                                if (s != null && e != null && hypot(e.x - s.x, e.y - s.y) > 0.015f) {
-                                                    val shape = PageEditItem.ShapeItem(
-                                                        pageIndex = currentPageIndex,
-                                                        shapeType = activeShapeType,
-                                                        startX = s.x,
-                                                        startY = s.y,
-                                                        endX = e.x,
-                                                        endY = e.y,
-                                                        colorArgb = activeColorArgb,
-                                                        strokeWidthNorm = strokeThicknessNorm,
-                                                        isFilled = shapeFilled
-                                                    )
-                                                    onAddEditItem(shape)
-                                                    selectedEditId = shape.id
-                                                }
-                                                dragStartNorm = null
-                                                dragCurrentNorm = null
-                                            }
-                                            else -> Unit
-                                        }
-                                    }
-                                )
-                            }
-                            .testTag("pdf_editor_canvas")
-                    ) {
-                        Image(
-                            bitmap = pageBitmap.asImageBitmap(),
-                            contentDescription = "PDF Page ${currentPageIndex + 1}",
-                            modifier = Modifier.fillMaxSize()
-                        )
-
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val cw = size.width
-                            val ch = size.height
-
-                            // Show existing text boxes when EDIT_TEXT tool is active
-                            if (activeTool == EditorTool.EDIT_TEXT) {
-                                val dash = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
-                                detectedTextLines.forEach { line ->
-                                    val lx = line.normLeft * cw
-                                    val ly = line.normTop * ch
-                                    val lw = ((line.normRight - line.normLeft) * cw).coerceAtLeast(16f)
-                                    val lh = ((line.normBottom - line.normTop) * ch).coerceAtLeast(14f)
-                                    drawRect(
-                                        color = Color(0x221F3A60),
-                                        topLeft = Offset(lx, ly),
-                                        size = Size(lw, lh)
-                                    )
-                                    drawRect(
-                                        color = Color(0xFF1F3A60),
-                                        topLeft = Offset(lx, ly),
-                                        size = Size(lw, lh),
-                                        style = Stroke(width = 1.6f, pathEffect = dash)
-                                    )
-                                }
-                            }
-
-                            // Render committed edits on current page
-                            currentPageEdits.forEach { item ->
-                                val isSelected = item.id == selectedEditId
-                                when (item) {
-                                    is PageEditItem.SquareErase -> {
-                                        val left = min(item.normLeft, item.normRight) * cw
-                                        val top = min(item.normTop, item.normBottom) * ch
-                                        val rw = abs(item.normRight - item.normLeft) * cw
-                                        val rh = abs(item.normBottom - item.normTop) * ch
-                                        drawRect(
-                                            color = Color(item.fillColorArgb),
-                                            topLeft = Offset(left, top),
-                                            size = Size(rw, rh)
-                                        )
-                                        if (isSelected) {
-                                            drawSelectionBox(left, top, rw, rh)
-                                        }
-                                    }
-
-                                    is PageEditItem.TextReplacement -> {
-                                        val left = min(item.normLeft, item.normRight) * cw
-                                        val top = min(item.normTop, item.normBottom) * ch
-                                        val rw = (abs(item.normRight - item.normLeft) * cw).coerceAtLeast(40f)
-                                        val rh = (abs(item.normBottom - item.normTop) * ch).coerceAtLeast(18f)
-                                        drawRect(
-                                            color = Color(item.bgColorArgb),
-                                            topLeft = Offset(left - 2f, top - 2f),
-                                            size = Size(rw + 4f, rh + 4f)
-                                        )
-                                        if (item.newText.isNotBlank()) {
-                                            val scaledSp = ((item.fontSizePt / 595f) * cw / density).coerceIn(9f, 34f).sp
-                                            val measured = textMeasurer.measure(
-                                                text = item.newText,
-                                                style = TextStyle(
-                                                    color = Color(item.colorArgb),
-                                                    fontSize = scaledSp,
-                                                    fontWeight = FontWeight.Medium
-                                                )
-                                            )
-                                            drawText(measured, topLeft = Offset(left, top))
-                                        }
-                                        if (isSelected) {
-                                            drawSelectionBox(left, top, rw, rh)
-                                        }
-                                    }
-
-                                    is PageEditItem.HighlighterStroke -> {
-                                        if (item.points.size >= 2) {
-                                            val p = Path().apply {
-                                                moveTo(item.points.first().x * cw, item.points.first().y * ch)
-                                                item.points.drop(1).forEach { lineTo(it.x * cw, it.y * ch) }
-                                            }
-                                            drawPath(
-                                                path = p,
-                                                color = Color(item.colorArgb).copy(alpha = 0.38f),
-                                                style = Stroke(
-                                                    width = (item.strokeWidthNorm * cw).coerceAtLeast(10f),
-                                                    cap = StrokeCap.Round,
-                                                    join = StrokeJoin.Round
-                                                )
-                                            )
-                                        }
-                                    }
-
-                                    is PageEditItem.ShapeItem -> {
-                                        drawShapePreview(
-                                            shapeType = item.shapeType,
-                                            x1 = item.startX * cw,
-                                            y1 = item.startY * ch,
-                                            x2 = item.endX * cw,
-                                            y2 = item.endY * ch,
-                                            color = Color(item.colorArgb),
-                                            strokePx = (item.strokeWidthNorm * cw).coerceAtLeast(2.5f),
-                                            filled = item.isFilled
-                                        )
-                                        if (isSelected) {
-                                            val lx = min(item.startX, item.endX) * cw
-                                            val ly = min(item.startY, item.endY) * ch
-                                            drawSelectionBox(
-                                                lx - 6f,
-                                                ly - 6f,
-                                                abs(item.endX - item.startX) * cw + 12f,
-                                                abs(item.endY - item.startY) * ch + 12f
-                                            )
-                                        }
-                                    }
-
-                                    is PageEditItem.TextAddition -> {
-                                        val scaledSp = ((item.fontSizePt / 595f) * cw / density).coerceIn(10f, 44f).sp
-                                        val measured = textMeasurer.measure(
-                                            text = item.text,
-                                            style = TextStyle(
-                                                color = Color(item.colorArgb),
-                                                fontSize = scaledSp,
-                                                fontWeight = if (item.isBold) FontWeight.Bold else FontWeight.Normal
-                                            )
-                                        )
-                                        val tx = item.normX * cw
-                                        val ty = item.normY * ch
-                                        drawText(measured, topLeft = Offset(tx, ty))
-                                        if (isSelected) {
-                                            drawSelectionBox(
-                                                tx - 4f,
-                                                ty - 2f,
-                                                measured.size.width + 8f,
-                                                measured.size.height + 4f
-                                            )
-                                        }
-                                    }
-
-                                    is PageEditItem.ImageAddition -> {
-                                        val bmp = stampBitmaps[item.imagePath]
-                                        val ix = item.normX * cw
-                                        val iy = item.normY * ch
-                                        val iw = item.normWidth * cw
-                                        val ih = item.normHeight * ch
-                                        if (bmp != null) {
-                                            drawImage(
-                                                image = bmp.asImageBitmap(),
-                                                dstOffset = IntOffset(ix.roundToInt(), iy.roundToInt()),
-                                                dstSize = IntSize(iw.roundToInt().coerceAtLeast(10), ih.roundToInt().coerceAtLeast(10))
-                                            )
-                                        }
-                                        if (isSelected) drawSelectionBox(ix, iy, iw, ih)
-                                    }
-
-                                    is PageEditItem.SignatureAddition -> {
-                                        val bmp = stampBitmaps[item.signaturePath]
-                                        val sx = item.normX * cw
-                                        val sy = item.normY * ch
-                                        val sw = item.normWidth * cw
-                                        val sh = item.normHeight * ch
-                                        if (bmp != null) {
-                                            drawImage(
-                                                image = bmp.asImageBitmap(),
-                                                dstOffset = IntOffset(sx.roundToInt(), sy.roundToInt()),
-                                                dstSize = IntSize(sw.roundToInt().coerceAtLeast(10), sh.roundToInt().coerceAtLeast(10))
-                                            )
-                                        }
-                                        if (isSelected) drawSelectionBox(sx, sy, sw, sh)
-                                    }
-                                }
-                            }
-
-                            // Live gesture overlays
-                            if (liveHighlightPoints.size >= 2) {
-                                val lp = Path().apply {
-                                    moveTo(liveHighlightPoints.first().x * cw, liveHighlightPoints.first().y * ch)
-                                    liveHighlightPoints.drop(1).forEach { lineTo(it.x * cw, it.y * ch) }
-                                }
-                                drawPath(
-                                    path = lp,
-                                    color = Color(highlighterColorArgb).copy(alpha = 0.38f),
-                                    style = Stroke(
-                                        width = (highlighterThicknessNorm * cw).coerceAtLeast(10f),
-                                        cap = StrokeCap.Round,
-                                        join = StrokeJoin.Round
-                                    )
-                                )
-                            }
-
-                            val ds = dragStartNorm
-                            val de = dragCurrentNorm
-                            if (ds != null && de != null) {
-                                if (activeTool == EditorTool.SQUARE_ERASE) {
-                                    val lx = min(ds.x, de.x) * cw
-                                    val ly = min(ds.y, de.y) * ch
-                                    val lw = abs(de.x - ds.x) * cw
-                                    val lh = abs(de.y - ds.y) * ch
-                                    drawRect(
-                                        color = Color(eraseColorArgb).copy(alpha = 0.85f),
-                                        topLeft = Offset(lx, ly),
-                                        size = Size(lw, lh)
-                                    )
-                                    drawRect(
-                                        color = Color(0xFF8E1D2A),
-                                        topLeft = Offset(lx, ly),
-                                        size = Size(lw, lh),
-                                        style = Stroke(
-                                            width = 2.5f,
-                                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f), 0f)
-                                        )
-                                    )
-                                } else if (activeTool == EditorTool.SHAPE) {
-                                    drawShapePreview(
-                                        shapeType = activeShapeType,
-                                        x1 = ds.x * cw,
-                                        y1 = ds.y * ch,
-                                        x2 = de.x * cw,
-                                        y2 = de.y * ch,
-                                        color = Color(activeColorArgb),
-                                        strokePx = (strokeThicknessNorm * cw).coerceAtLeast(2.5f),
-                                        filled = shapeFilled
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Add New Text Dialog
-    pendingAddTextPos?.let { pos ->
-        AddOrEditTextDialog(
-            title = "নতুন টেক্সট যোগ করুন",
-            initialText = "",
-            initialFontSize = 16f,
-            initialColorArgb = activeColorArgb,
-            showBoldToggle = true,
-            onDismiss = { pendingAddTextPos = null },
-            onConfirm = { newText, sizePt, chosenColor, bold ->
-                activeColorArgb = chosenColor
-                if (newText.isNotBlank()) {
-                    val added = PageEditItem.TextAddition(
-                        pageIndex = currentPageIndex,
-                        normX = pos.x.coerceIn(0.03f, 0.85f),
-                        normY = pos.y.coerceIn(0.03f, 0.92f),
-                        text = newText,
-                        fontSizePt = sizePt,
-                        colorArgb = chosenColor,
-                        isBold = bold
-                    )
-                    onAddEditItem(added)
-                    selectedEditId = added.id
-                    activeTool = EditorTool.SELECT
-                }
-                pendingAddTextPos = null
-            }
-        )
-    }
-
-    // Replace Existing PDF Text Line Dialog
-    editingDetectedLine?.let { line ->
-        AddOrEditTextDialog(
-            title = "বিদ্যমান লেখা পরিবর্তন করুন",
-            initialText = line.text,
-            initialFontSize = line.fontSizePt,
-            initialColorArgb = 0xFF1A1A1A.toInt(),
-            showBoldToggle = false,
-            subtitle = "মূল লেখা: \"${line.text}\" (ফাঁকা রাখলে মূল লেখাটি মুছে যাবে)",
-            onDismiss = { editingDetectedLine = null },
-            onConfirm = { updatedText, sizePt, chosenColor, _ ->
-                val rep = PageEditItem.TextReplacement(
-                    pageIndex = currentPageIndex,
-                    normLeft = line.normLeft,
-                    normTop = line.normTop,
-                    normRight = line.normRight,
-                    normBottom = line.normBottom,
-                    originalText = line.text,
-                    newText = updatedText,
-                    colorArgb = chosenColor,
-                    bgColorArgb = 0xFFFFFFFF.toInt(),
-                    fontSizePt = sizePt
-                )
-                onAddEditItem(rep)
-                selectedEditId = rep.id
-                editingDetectedLine = null
-            }
-        )
     }
 
     // Color Picker Dialog
     showColorPickerFor?.let { target ->
-        val startArgb = when (target) {
+        val initCol = when (target) {
             "HIGHLIGHT" -> highlighterColorArgb
             "ERASE" -> eraseColorArgb
             else -> activeColorArgb
         }
         ColorPickerDialog(
-            title = when (target) {
-                "HIGHLIGHT" -> "হাইলাইটারের রঙ নির্বাচন"
-                "ERASE" -> "ইরেজ বক্সের ব্যাকগ্রাউন্ড রঙ"
-                else -> "টেক্সট ও শেপের রঙ নির্বাচন"
-            },
-            initialColorArgb = startArgb,
+            initialColorArgb = initCol,
             onDismiss = { showColorPickerFor = null },
-            onColorSelected = { chosen ->
+            onColorSelected = { selected ->
                 when (target) {
-                    "HIGHLIGHT" -> highlighterColorArgb = chosen
-                    "ERASE" -> eraseColorArgb = chosen
-                    else -> {
-                        activeColorArgb = chosen
-                        val sel = currentPageEdits.find { it.id == selectedEditId }
-                        if (sel is PageEditItem.ShapeItem) {
-                            onUpdateEditItem(sel.copy(colorArgb = chosen))
-                        } else if (sel is PageEditItem.TextAddition) {
-                            onUpdateEditItem(sel.copy(colorArgb = chosen))
-                        }
-                    }
+                    "HIGHLIGHT" -> highlighterColorArgb = selected
+                    "ERASE" -> eraseColorArgb = selected
+                    else -> activeColorArgb = selected
                 }
                 showColorPickerFor = null
             }
         )
     }
 
-    // Signature Library Bottom Sheet
+    // Add New Text Dialog -> Places strictly onto lockedTargetPageForPicker (the double-tapped page!)
+    pendingAddTextPos?.let { pos ->
+        val destinationPage = lockedTargetPageForPicker.coerceIn(0, (totalPages - 1).coerceAtLeast(0))
+        AddTextToPdfDialog(
+            initialColorArgb = activeColorArgb,
+            onDismiss = { pendingAddTextPos = null },
+            onPickColor = { showColorPickerFor = "MAIN" },
+            onConfirm = { text, fontSizePt, isBold ->
+                val item = PageEditItem.TextAddition(
+                    pageIndex = destinationPage,
+                    normX = pos.x.coerceIn(0.05f, 0.78f),
+                    normY = pos.y.coerceIn(0.05f, 0.88f),
+                    text = text,
+                    fontSizePt = fontSizePt,
+                    colorArgb = activeColorArgb,
+                    isBold = isBold
+                )
+                targetPageIndex = destinationPage
+                activeDraft = ActiveDraftState(item, isExistingEdit = false)
+                activeTool = EditorTool.SELECT
+                pendingAddTextPos = null
+            }
+        )
+    }
+
+    // Edit Existing Detected Text Dialog
+    editingDetectedLine?.let { detected ->
+        EditDetectedTextDialog(
+            line = detected,
+            colorArgb = activeColorArgb,
+            onDismiss = { editingDetectedLine = null },
+            onPickColor = { showColorPickerFor = "MAIN" },
+            onConfirm = { newText ->
+                onAddEditItem(
+                    PageEditItem.TextReplacement(
+                        pageIndex = detected.pageIndex,
+                        normLeft = detected.normLeft,
+                        normTop = detected.normTop,
+                        normRight = detected.normRight,
+                        normBottom = detected.normBottom,
+                        originalText = detected.text,
+                        newText = newText,
+                        colorArgb = activeColorArgb,
+                        fontSizePt = detected.fontSizePt
+                    )
+                )
+                editingDetectedLine = null
+            }
+        )
+    }
+
+    // Signature Library Bottom Sheet (Scoped strictly to lockedTargetPageForPicker!)
     if (showSignatureSheet) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val destinationPage = lockedTargetPageForPicker.coerceIn(0, (totalPages - 1).coerceAtLeast(0))
         ModalBottomSheet(
+            sheetState = sheetState,
             onDismissRequest = { showSignatureSheet = false }
         ) {
             SignatureLibraryContent(
                 signatures = signatures,
-                selectionModeLabel = "যেকোনো সিগনেচারে ট্যাপ করলেই বর্তমান PDF পেজে বসে যাবে:",
-                onSelectSignature = { sig ->
-                    val stamp = PageEditItem.SignatureAddition(
-                        pageIndex = currentPageIndex,
-                        normX = 0.52f,
-                        normY = 0.74f,
-                        normWidth = 0.32f,
-                        normHeight = 0.11f,
-                        signaturePath = sig.imagePath
-                    )
-                    onAddEditItem(stamp)
-                    selectedEditId = stamp.id
-                    activeTool = EditorTool.SELECT
-                    showSignatureSheet = false
-                },
+                selectionModeLabel = tr(
+                    "Tap any signature (or draw/import a new one) to place, drag & rotate it strictly on Page ${destinationPage + 1}.",
+                    "যেকোনো স্বাক্ষরে ট্যাপ করুন (অথবা নতুন আঁকুন/ইমেজ আনুন) — সরাসরি ডাবল ট্যাপ করা পেজ ${destinationPage + 1}-এ বসবে।"
+                ),
+                onSelectSignature = { sig -> placeSignatureOnTargetPage(sig) },
                 onCreateSignature = onCreateSignature,
-                onDeleteSignature = onDeleteSignature,
-                modifier = Modifier.navigationBarsPadding()
+                onDeleteSignature = onDeleteSignature
+            )
+        }
+    }
+
+    // Requirement ৪: Manage Pages Bottom Sheet (Delete, Reorder, Rotate Specific Pages)
+    if (showManagePagesSheet && pdfSession != null) {
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            sheetState = sheetState,
+            onDismissRequest = { showManagePagesSheet = false }
+        ) {
+            ManagePdfPagesSheetContent(
+                session = pdfSession!!,
+                initialFocusPageIndex = targetPageIndex,
+                onDismiss = { showManagePagesSheet = false },
+                onApplyChanges = { updatedSpecs ->
+                    showManagePagesSheet = false
+                    val allEdits = collectAllEditsIncludingDraft()
+                    activeDraft = null
+                    resetZoom()
+                    onApplyPageOperations(updatedSpecs, allEdits)
+                }
             )
         }
     }
 }
 
 @Composable
-private fun EditorBottomToolDock(
+private fun FullWidthLazyPdfPageItem(
+    session: LazyPdfSession,
+    pageIndex: Int,
+    isTargetEditablePage: Boolean,
+    showTargetBorder: Boolean,
+    targetRenderWidthPx: Int,
     activeTool: EditorTool,
     activeShapeType: ShapeType,
     shapeFilled: Boolean,
@@ -1008,469 +1074,494 @@ private fun EditorBottomToolDock(
     eraseColorArgb: Int,
     strokeThicknessNorm: Float,
     highlighterThicknessNorm: Float,
-    selectedItem: PageEditItem?,
-    detectedCount: Int,
-    onSelectTool: (EditorTool) -> Unit,
-    onSelectShapeType: (ShapeType) -> Unit,
-    onToggleShapeFilled: (Boolean) -> Unit,
-    onStrokeThicknessChange: (Float) -> Unit,
-    onHighlighterThicknessChange: (Float) -> Unit,
-    onQuickHighlightColor: (Int) -> Unit,
-    onOpenColorPicker: (String) -> Unit,
-    onResizeSelected: (Float) -> Unit,
-    onDeleteSelected: () -> Unit
+    committedPageEdits: List<PageEditItem>,
+    detectedLines: List<DetectedPdfTextLine>,
+    activeDraftOnPage: ActiveDraftState?,
+    hasAnyActiveDraft: Boolean,
+    stampBitmaps: Map<String, ImageBitmap>,
+    onDoubleTapPage: () -> Unit,
+    onRequestAddTextAt: (NormPoint) -> Unit,
+    onRequestEditDetectedLine: (DetectedPdfTextLine) -> Unit,
+    onRequestOpenSignatureSheet: () -> Unit,
+    onSelectExistingEditForTransform: (PageEditItem) -> Unit,
+    onStartNewDraft: (PageEditItem) -> Unit,
+    onCommitStrokeEdit: (PageEditItem) -> Unit,
+    onApplyActiveDraft: () -> Unit,
+    onDeleteActiveDraft: () -> Unit
 ) {
-    Surface(
-        tonalElevation = 6.dp,
-        shadowElevation = 8.dp,
+    val textMeasurer = rememberTextMeasurer()
+
+    var aspectRatio by remember(session, pageIndex) {
+        mutableFloatStateOf(session.getCachedAspectRatio(pageIndex))
+    }
+    var pageBitmap by remember(session, pageIndex) {
+        mutableStateOf(session.getCachedBitmap(pageIndex))
+    }
+    var pagePixelSize by remember { mutableStateOf(IntSize(1, 1)) }
+
+    LaunchedEffect(session, pageIndex, targetRenderWidthPx) {
+        aspectRatio = session.getOrLoadAspectRatio(pageIndex)
+        val rendered = session.renderPage(pageIndex, targetRenderWidthPx)
+        if (rendered != null) {
+            aspectRatio = session.getCachedAspectRatio(pageIndex)
+            pageBitmap = rendered
+        }
+    }
+
+    // Live finger drawing state for Freehand Pen, Highlighter, Square Erase, and Shapes
+    val livePoints = remember { mutableStateListOf<NormPoint>() }
+    var dragStartNorm by remember { mutableStateOf<NormPoint?>(null) }
+    var dragCurrentNorm by remember { mutableStateOf<NormPoint?>(null) }
+
+    val currentTool by rememberUpdatedState(activeTool)
+    val currentIsTargetEditable by rememberUpdatedState(isTargetEditablePage)
+    val currentShape by rememberUpdatedState(activeShapeType)
+    val currentFilled by rememberUpdatedState(shapeFilled)
+    val currentColor by rememberUpdatedState(activeColorArgb)
+    val currentHiColor by rememberUpdatedState(highlighterColorArgb)
+    val currentEraseColor by rememberUpdatedState(eraseColorArgb)
+    val currentStrokeW by rememberUpdatedState(strokeThicknessNorm)
+    val currentHiW by rememberUpdatedState(highlighterThicknessNorm)
+    val currentEdits by rememberUpdatedState(committedPageEdits)
+    val currentDetected by rememberUpdatedState(detectedLines)
+    val currentHasDraft by rememberUpdatedState(hasAnyActiveDraft)
+    val currentOnDoubleTap by rememberUpdatedState(onDoubleTapPage)
+
+    val isStrokeTool = isTargetEditablePage && (
+        activeTool == EditorTool.FREEHAND ||
+            activeTool == EditorTool.HIGHLIGHTER ||
+            activeTool == EditorTool.SQUARE_ERASE ||
+            activeTool == EditorTool.SHAPE
+        )
+
+    Box(
+        contentAlignment = Alignment.Center,
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
+            .aspectRatio(aspectRatio.coerceIn(0.25f, 3.5f))
+            .background(Color.White)
+            .then(
+                if (showTargetBorder) {
+                    Modifier.border(2.5.dp, Color(0xFFFFCA28))
+                } else Modifier
+            )
+            .onSizeChanged { pagePixelSize = it }
+            .pointerInput(pageIndex) {
+                detectTapGestures(
+                    onDoubleTap = {
+                        currentOnDoubleTap()
+                    },
+                    onTap = { tapOffset ->
+                        if (currentHasDraft || !currentIsTargetEditable) return@detectTapGestures
+                        val w = size.width.coerceAtLeast(1).toFloat()
+                        val h = size.height.coerceAtLeast(1).toFloat()
+                        val nx = (tapOffset.x / w).coerceIn(0f, 1f)
+                        val ny = (tapOffset.y / h).coerceIn(0f, 1f)
+
+                        when (currentTool) {
+                            EditorTool.ADD_TEXT -> onRequestAddTextAt(NormPoint(nx, ny))
+                            EditorTool.EDIT_TEXT -> {
+                                val hit = currentDetected.firstOrNull { line ->
+                                    nx in (line.normLeft - 0.02f)..(line.normRight + 0.02f) &&
+                                        ny in (line.normTop - 0.015f)..(line.normBottom + 0.015f)
+                                }
+                                if (hit != null) onRequestEditDetectedLine(hit)
+                            }
+                            EditorTool.SIGNATURE -> onRequestOpenSignatureSheet()
+                            else -> {
+                                val hitEdit = hitTestCommittedItem(currentEdits, nx, ny)
+                                if (hitEdit != null) {
+                                    onSelectExistingEditForTransform(hitEdit)
+                                }
+                            }
+                        }
+                    }
+                )
+            }
+            .then(
+                if (isStrokeTool && activeDraftOnPage == null) {
+                    Modifier.pointerInput(pageIndex, activeTool) {
+                        detectDragGestures(
+                            onDragStart = { start ->
+                                val w = size.width.coerceAtLeast(1).toFloat()
+                                val h = size.height.coerceAtLeast(1).toFloat()
+                                val pt = NormPoint((start.x / w).coerceIn(0f, 1f), (start.y / h).coerceIn(0f, 1f))
+                                when (currentTool) {
+                                    EditorTool.FREEHAND, EditorTool.HIGHLIGHTER -> {
+                                        livePoints.clear()
+                                        livePoints.add(pt)
+                                    }
+                                    EditorTool.SQUARE_ERASE, EditorTool.SHAPE -> {
+                                        dragStartNorm = pt
+                                        dragCurrentNorm = pt
+                                    }
+                                    else -> Unit
+                                }
+                            },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                val w = size.width.coerceAtLeast(1).toFloat()
+                                val h = size.height.coerceAtLeast(1).toFloat()
+                                val pt = NormPoint(
+                                    (change.position.x / w).coerceIn(0f, 1f),
+                                    (change.position.y / h).coerceIn(0f, 1f)
+                                )
+                                when (currentTool) {
+                                    EditorTool.FREEHAND, EditorTool.HIGHLIGHTER -> livePoints.add(pt)
+                                    EditorTool.SQUARE_ERASE, EditorTool.SHAPE -> dragCurrentNorm = pt
+                                    else -> Unit
+                                }
+                            },
+                            onDragEnd = {
+                                when (currentTool) {
+                                    EditorTool.FREEHAND -> {
+                                        if (livePoints.size >= 2) {
+                                            onCommitStrokeEdit(
+                                                PageEditItem.FreehandStroke(
+                                                    pageIndex = pageIndex,
+                                                    points = livePoints.toList(),
+                                                    colorArgb = currentColor,
+                                                    strokeWidthNorm = currentStrokeW
+                                                )
+                                            )
+                                        }
+                                        livePoints.clear()
+                                    }
+                                    EditorTool.HIGHLIGHTER -> {
+                                        if (livePoints.size >= 2) {
+                                            onCommitStrokeEdit(
+                                                PageEditItem.HighlighterStroke(
+                                                    pageIndex = pageIndex,
+                                                    points = livePoints.toList(),
+                                                    colorArgb = currentHiColor,
+                                                    strokeWidthNorm = currentHiW
+                                                )
+                                            )
+                                        }
+                                        livePoints.clear()
+                                    }
+                                    EditorTool.SQUARE_ERASE -> {
+                                        val s = dragStartNorm
+                                        val e = dragCurrentNorm
+                                        if (s != null && e != null &&
+                                            abs(e.x - s.x) > 0.015f && abs(e.y - s.y) > 0.012f
+                                        ) {
+                                            onStartNewDraft(
+                                                PageEditItem.SquareErase(
+                                                    pageIndex = pageIndex,
+                                                    normLeft = min(s.x, e.x),
+                                                    normTop = min(s.y, e.y),
+                                                    normRight = max(s.x, e.x),
+                                                    normBottom = max(s.y, e.y),
+                                                    fillColorArgb = currentEraseColor
+                                                )
+                                            )
+                                        }
+                                        dragStartNorm = null
+                                        dragCurrentNorm = null
+                                    }
+                                    EditorTool.SHAPE -> {
+                                        val s = dragStartNorm
+                                        val e = dragCurrentNorm
+                                        if (s != null && e != null && hypot(e.x - s.x, e.y - s.y) > 0.018f) {
+                                            onStartNewDraft(
+                                                PageEditItem.ShapeItem(
+                                                    pageIndex = pageIndex,
+                                                    shapeType = currentShape,
+                                                    startX = s.x,
+                                                    startY = s.y,
+                                                    endX = e.x,
+                                                    endY = e.y,
+                                                    colorArgb = currentColor,
+                                                    strokeWidthNorm = currentStrokeW,
+                                                    isFilled = currentFilled
+                                                )
+                                            )
+                                        }
+                                        dragStartNorm = null
+                                        dragCurrentNorm = null
+                                    }
+                                    else -> Unit
+                                }
+                            }
+                        )
+                    }
+                } else Modifier
+            )
+            .testTag("pdf_page_$pageIndex")
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            // Secondary Contextual Controls
-            when {
-                activeTool == EditorTool.SELECT && selectedItem != null -> {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp)
-                    ) {
-                        Text("নির্বাচিত আইটেম:", style = MaterialTheme.typography.labelLarge)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            AssistChip(onClick = { onResizeSelected(-0.04f) }, label = { Text("ছোট -") })
-                            AssistChip(onClick = { onResizeSelected(0.04f) }, label = { Text("বড় +") })
-                            IconButton(onClick = { onOpenColorPicker("MAIN") }) {
-                                Icon(NokshiIcons.Palette, contentDescription = "রঙ পরিবর্তন")
+        val bmp = pageBitmap
+        if (bmp == null) {
+            CircularProgressIndicator(modifier = Modifier.size(32.dp))
+        } else {
+            Image(
+                bitmap = remember(bmp) { bmp.asImageBitmap() },
+                contentDescription = "Page ${pageIndex + 1}",
+                contentScale = ContentScale.FillWidth,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        // Committed Edits & Live Drawing Canvas
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val cw = size.width
+            val ch = size.height
+
+            if (activeTool == EditorTool.EDIT_TEXT && isTargetEditablePage) {
+                val dash = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
+                detectedLines.forEach { line ->
+                    val lx = line.normLeft * cw
+                    val ly = line.normTop * ch
+                    val lw = ((line.normRight - line.normLeft) * cw).coerceAtLeast(16f)
+                    val lh = ((line.normBottom - line.normTop) * ch).coerceAtLeast(14f)
+                    drawRect(color = Color(0x221F3A60), topLeft = Offset(lx, ly), size = Size(lw, lh))
+                    drawRect(
+                        color = Color(0xFF1F3A60),
+                        topLeft = Offset(lx, ly),
+                        size = Size(lw, lh),
+                        style = Stroke(width = 1.5f, pathEffect = dash)
+                    )
+                }
+            }
+
+            committedPageEdits.forEach { item ->
+                when (item) {
+                    is PageEditItem.SquareErase -> {
+                        val left = min(item.normLeft, item.normRight) * cw
+                        val top = min(item.normTop, item.normBottom) * ch
+                        val rw = abs(item.normRight - item.normLeft) * cw
+                        val rh = abs(item.normBottom - item.normTop) * ch
+                        withTransform({
+                            rotate(item.rotationDeg, Offset(left + rw / 2f, top + rh / 2f))
+                        }) {
+                            drawRect(color = Color(item.fillColorArgb), topLeft = Offset(left, top), size = Size(rw, rh))
+                        }
+                    }
+
+                    is PageEditItem.TextReplacement -> {
+                        val left = min(item.normLeft, item.normRight) * cw
+                        val top = min(item.normTop, item.normBottom) * ch
+                        val rw = (abs(item.normRight - item.normLeft) * cw).coerceAtLeast(40f)
+                        val rh = (abs(item.normBottom - item.normTop) * ch).coerceAtLeast(18f)
+                        drawRect(color = Color(item.bgColorArgb), topLeft = Offset(left - 2f, top - 2f), size = Size(rw + 4f, rh + 4f))
+                        if (item.newText.isNotBlank()) {
+                            val scaledSp = ((item.fontSizePt / 595f) * cw / density).coerceIn(9f, 34f).sp
+                            val measured = textMeasurer.measure(
+                                text = item.newText,
+                                style = TextStyle(color = Color(item.colorArgb), fontSize = scaledSp, fontWeight = FontWeight.Medium)
+                            )
+                            drawText(measured, topLeft = Offset(left, top))
+                        }
+                    }
+
+                    is PageEditItem.FreehandStroke -> {
+                        if (item.points.size >= 2) {
+                            val p = Path().apply {
+                                moveTo(item.points.first().x * cw, item.points.first().y * ch)
+                                item.points.drop(1).forEach { lineTo(it.x * cw, it.y * ch) }
                             }
-                            IconButton(onClick = onDeleteSelected) {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = "মুছে ফেলুন",
-                                    tint = MaterialTheme.colorScheme.error
+                            drawPath(
+                                path = p,
+                                color = Color(item.colorArgb),
+                                style = Stroke(
+                                    width = (item.strokeWidthNorm * cw).coerceAtLeast(2.2f),
+                                    cap = StrokeCap.Round,
+                                    join = StrokeJoin.Round
+                                )
+                            )
+                        }
+                    }
+
+                    is PageEditItem.HighlighterStroke -> {
+                        if (item.points.size >= 2) {
+                            val p = Path().apply {
+                                moveTo(item.points.first().x * cw, item.points.first().y * ch)
+                                item.points.drop(1).forEach { lineTo(it.x * cw, it.y * ch) }
+                            }
+                            drawPath(
+                                path = p,
+                                color = Color(item.colorArgb).copy(alpha = 0.38f),
+                                style = Stroke(
+                                    width = (item.strokeWidthNorm * cw).coerceAtLeast(10f),
+                                    cap = StrokeCap.Round,
+                                    join = StrokeJoin.Round
+                                )
+                            )
+                        }
+                    }
+
+                    is PageEditItem.ShapeItem -> {
+                        val x1 = item.startX * cw
+                        val y1 = item.startY * ch
+                        val x2 = item.endX * cw
+                        val y2 = item.endY * ch
+                        val cx = (x1 + x2) / 2f
+                        val cy = (y1 + y2) / 2f
+                        withTransform({
+                            rotate(item.rotationDeg, Offset(cx, cy))
+                        }) {
+                            drawShapePreview(
+                                shapeType = item.shapeType,
+                                x1 = x1,
+                                y1 = y1,
+                                x2 = x2,
+                                y2 = y2,
+                                color = Color(item.colorArgb),
+                                strokePx = (item.strokeWidthNorm * cw).coerceAtLeast(2.5f),
+                                filled = item.isFilled
+                            )
+                        }
+                    }
+
+                    is PageEditItem.TextAddition -> {
+                        val scaledSp = ((item.fontSizePt / 595f) * cw / density).coerceIn(10f, 52f).sp
+                        val measured = textMeasurer.measure(
+                            text = item.text,
+                            style = TextStyle(
+                                color = Color(item.colorArgb),
+                                fontSize = scaledSp,
+                                fontWeight = if (item.isBold) FontWeight.Bold else FontWeight.Normal
+                            )
+                        )
+                        val tx = item.normX * cw
+                        val ty = item.normY * ch
+                        withTransform({
+                            rotate(item.rotationDeg, Offset(tx + measured.size.width / 2f, ty + measured.size.height / 2f))
+                        }) {
+                            drawText(measured, topLeft = Offset(tx, ty))
+                        }
+                    }
+
+                    is PageEditItem.ImageAddition -> {
+                        val img = stampBitmaps[item.imagePath]
+                        if (img != null) {
+                            val ix = item.normX * cw
+                            val iy = item.normY * ch
+                            val iw = item.normWidth * cw
+                            val ih = item.normHeight * ch
+                            withTransform({
+                                rotate(item.rotationDeg, Offset(ix + iw / 2f, iy + ih / 2f))
+                            }) {
+                                drawImage(
+                                    image = img,
+                                    dstOffset = IntOffset(ix.roundToInt(), iy.roundToInt()),
+                                    dstSize = IntSize(iw.roundToInt().coerceAtLeast(10), ih.roundToInt().coerceAtLeast(10))
+                                )
+                            }
+                        }
+                    }
+
+                    is PageEditItem.SignatureAddition -> {
+                        val sig = stampBitmaps[item.signaturePath]
+                        if (sig != null) {
+                            val sx = item.normX * cw
+                            val sy = item.normY * ch
+                            val sw = item.normWidth * cw
+                            val sh = item.normHeight * ch
+                            withTransform({
+                                rotate(item.rotationDeg, Offset(sx + sw / 2f, sy + sh / 2f))
+                            }) {
+                                drawImage(
+                                    image = sig,
+                                    dstOffset = IntOffset(sx.roundToInt(), sy.roundToInt()),
+                                    dstSize = IntSize(sw.roundToInt().coerceAtLeast(10), sh.roundToInt().coerceAtLeast(10))
                                 )
                             }
                         }
                     }
                 }
+            }
 
-                activeTool == EditorTool.SHAPE -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(ShapeType.entries) { st ->
-                                FilterChip(
-                                    selected = activeShapeType == st,
-                                    onClick = { onSelectShapeType(st) },
-                                    label = { Text(st.labelBn) },
-                                    modifier = Modifier.testTag("shape_chip_${st.name.lowercase()}")
-                                )
-                            }
-                        }
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(30.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(activeColorArgb))
-                                    .border(1.5.dp, MaterialTheme.colorScheme.outline, CircleShape)
-                                    .clickable { onOpenColorPicker("MAIN") }
-                            )
-                            TextButton(onClick = { onOpenColorPicker("MAIN") }) {
-                                Text("কালার পিকার")
-                            }
-                            Slider(
-                                value = strokeThicknessNorm,
-                                onValueChange = onStrokeThicknessChange,
-                                valueRange = 0.002f..0.020f,
-                                modifier = Modifier.weight(1f)
-                            )
-                            if (activeShapeType == ShapeType.CIRCLE ||
-                                activeShapeType == ShapeType.OVAL ||
-                                activeShapeType == ShapeType.RECTANGLE
-                            ) {
-                                Text("ভরাট", style = MaterialTheme.typography.labelSmall)
-                                Switch(checked = shapeFilled, onCheckedChange = onToggleShapeFilled)
-                            }
-                        }
-                    }
+            // Live Freehand / Highlighter Stroke Preview
+            if (livePoints.size >= 2) {
+                val p = Path().apply {
+                    moveTo(livePoints.first().x * cw, livePoints.first().y * ch)
+                    livePoints.drop(1).forEach { lineTo(it.x * cw, it.y * ch) }
                 }
-
-                activeTool == EditorTool.HIGHLIGHTER -> {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp)
-                    ) {
-                        val quickSwatches = listOf(
-                            0xFFFFEB3B.toInt(),
-                            0xFF69F0AE.toInt(),
-                            0xFF40C4FF.toInt(),
-                            0xFFFF80AB.toInt(),
-                            0xFFFFAB40.toInt()
-                        )
-                        quickSwatches.forEach { c ->
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(c))
-                                    .border(
-                                        width = if (highlighterColorArgb == c) 2.5.dp else 1.dp,
-                                        color = if (highlighterColorArgb == c) MaterialTheme.colorScheme.primary else Color.Gray,
-                                        shape = CircleShape
-                                    )
-                                    .clickable { onQuickHighlightColor(c) }
-                            )
-                        }
-                        IconButton(onClick = { onOpenColorPicker("HIGHLIGHT") }) {
-                            Icon(NokshiIcons.Palette, contentDescription = "কালার পিকার")
-                        }
-                        Slider(
-                            value = highlighterThicknessNorm,
-                            onValueChange = onHighlighterThicknessChange,
-                            valueRange = 0.015f..0.055f,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-
-                activeTool == EditorTool.SQUARE_ERASE -> {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp)
-                    ) {
-                        Text(
-                            text = "স্কয়ার মার্কিং ইরেজার সক্রিয়",
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(26.dp)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(Color(eraseColorArgb))
-                                    .border(1.dp, Color.Gray, RoundedCornerShape(6.dp))
-                                    .clickable { onOpenColorPicker("ERASE") }
-                            )
-                            TextButton(onClick = { onOpenColorPicker("ERASE") }) {
-                                Text("ইরেজ রঙ পরিবর্তন")
-                            }
-                        }
-                    }
+                if (activeTool == EditorTool.FREEHAND) {
+                    drawPath(
+                        path = p,
+                        color = Color(activeColorArgb),
+                        style = Stroke(width = (strokeThicknessNorm * cw).coerceAtLeast(2.2f), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
+                } else if (activeTool == EditorTool.HIGHLIGHTER) {
+                    drawPath(
+                        path = p,
+                        color = Color(highlighterColorArgb).copy(alpha = 0.40f),
+                        style = Stroke(width = (highlighterThicknessNorm * cw).coerceAtLeast(10f), cap = StrokeCap.Round, join = StrokeJoin.Round)
+                    )
                 }
             }
 
-            // Primary Scrollable Tool Strip
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                items(EditorTool.entries) { tool ->
-                    val icon = when (tool) {
-                        EditorTool.SELECT -> NokshiIcons.OpenWith
-                        EditorTool.EDIT_TEXT -> NokshiIcons.EditNote
-                        EditorTool.ADD_TEXT -> NokshiIcons.TextFields
-                        EditorTool.ADD_IMAGE -> NokshiIcons.AddPhotoAlternate
-                        EditorTool.SQUARE_ERASE -> NokshiIcons.CropFree
-                        EditorTool.HIGHLIGHTER -> NokshiIcons.BorderColor
-                        EditorTool.SHAPE -> NokshiIcons.Category
-                        EditorTool.SIGNATURE -> NokshiIcons.Draw
-                    }
-                    val label = if (tool == EditorTool.EDIT_TEXT && detectedCount > 0) {
-                        "${tool.labelBn} ($detectedCount)"
-                    } else {
-                        tool.labelBn
-                    }
-                    FilterChip(
-                        selected = activeTool == tool,
-                        onClick = { onSelectTool(tool) },
-                        label = { Text(label) },
-                        leadingIcon = {
-                            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
-                        ),
-                        modifier = Modifier.testTag("tool_chip_${tool.name.lowercase()}")
+            // Live Square Erase / Shape Drag Preview
+            val s = dragStartNorm
+            val e = dragCurrentNorm
+            if (s != null && e != null) {
+                if (activeTool == EditorTool.SQUARE_ERASE) {
+                    val lx = min(s.x, e.x) * cw
+                    val ly = min(s.y, e.y) * ch
+                    val rw = abs(e.x - s.x) * cw
+                    val rh = abs(e.y - s.y) * ch
+                    drawRect(color = Color(eraseColorArgb), topLeft = Offset(lx, ly), size = Size(rw, rh))
+                    drawRect(color = Color(0xFFE53935), topLeft = Offset(lx, ly), size = Size(rw, rh), style = Stroke(width = 2f))
+                } else if (activeTool == EditorTool.SHAPE) {
+                    drawShapePreview(
+                        shapeType = activeShapeType,
+                        x1 = s.x * cw,
+                        y1 = s.y * ch,
+                        x2 = e.x * cw,
+                        y2 = e.y * ch,
+                        color = Color(activeColorArgb),
+                        strokePx = (strokeThicknessNorm * cw).coerceAtLeast(2.5f),
+                        filled = shapeFilled
                     )
                 }
             }
         }
-    }
-}
 
-@Composable
-private fun AddOrEditTextDialog(
-    title: String,
-    initialText: String,
-    initialFontSize: Float,
-    initialColorArgb: Int,
-    showBoldToggle: Boolean,
-    subtitle: String? = null,
-    onDismiss: () -> Unit,
-    onConfirm: (text: String, fontSizePt: Float, colorArgb: Int, isBold: Boolean) -> Unit
-) {
-    var text by remember { mutableStateOf(initialText) }
-    var fontSize by remember { mutableFloatStateOf(initialFontSize) }
-    var colorArgb by remember { mutableIntStateOf(initialColorArgb) }
-    var isBold by remember { mutableStateOf(false) }
-    var showPicker by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title, style = MaterialTheme.typography.titleLarge) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (subtitle != null) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    label = { Text("বাংলা বা ইংরেজি টেক্সট লিখুন") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("pdf_text_dialog_input")
-                )
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("ফন্ট সাইজ: ${fontSize.roundToInt()} pt", style = MaterialTheme.typography.labelLarge)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color(colorArgb))
-                                .border(1.dp, Color.Gray, CircleShape)
-                                .clickable { showPicker = true }
-                        )
-                        TextButton(onClick = { showPicker = true }) {
-                            Text("কালার পিকার")
-                        }
-                    }
-                }
-                Slider(
-                    value = fontSize,
-                    onValueChange = { fontSize = it },
-                    valueRange = 9f..42f
-                )
-                if (showBoldToggle) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("বোল্ড (গাঢ়) ফন্ট", style = MaterialTheme.typography.bodyMedium)
-                        Switch(checked = isBold, onCheckedChange = { isBold = it })
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(text, fontSize, colorArgb, isBold) },
-                modifier = Modifier.testTag("confirm_pdf_text_button")
-            ) {
-                Text("যুক্ত করুন")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("বাতিল") }
-        }
-    )
-
-    if (showPicker) {
-        ColorPickerDialog(
-            title = "লেখার রঙ নির্বাচন করুন",
-            initialColorArgb = colorArgb,
-            onDismiss = { showPicker = false },
-            onColorSelected = {
-                colorArgb = it
-                showPicker = false
-            }
-        )
-    }
-}
-
-private fun DrawScope.drawSelectionBox(x: Float, y: Float, w: Float, h: Float) {
-    drawRect(
-        color = Color(0xFF1E88E5),
-        topLeft = Offset(x, y),
-        size = Size(w.coerceAtLeast(12f), h.coerceAtLeast(12f)),
-        style = Stroke(
-            width = 2.2f,
-            pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
-        )
-    )
-}
-
-private fun DrawScope.drawShapePreview(
-    shapeType: ShapeType,
-    x1: Float,
-    y1: Float,
-    x2: Float,
-    y2: Float,
-    color: Color,
-    strokePx: Float,
-    filled: Boolean
-) {
-    val style = if (filled) androidx.compose.ui.graphics.drawscope.Fill else Stroke(
-        width = strokePx,
-        cap = StrokeCap.Round,
-        join = StrokeJoin.Round
-    )
-    when (shapeType) {
-        ShapeType.LINE -> {
-            drawLine(color = color, start = Offset(x1, y1), end = Offset(x2, y2), strokeWidth = strokePx, cap = StrokeCap.Round)
-        }
-        ShapeType.ARROW -> {
-            drawLine(color = color, start = Offset(x1, y1), end = Offset(x2, y2), strokeWidth = strokePx, cap = StrokeCap.Round)
-            val angle = atan2((y2 - y1).toDouble(), (x2 - x1).toDouble())
-            val headLen = (strokePx * 4.5f).coerceIn(14f, 34f)
-            val wing = Math.toRadians(28.0)
-            val ax1 = (x2 - headLen * cos(angle - wing)).toFloat()
-            val ay1 = (y2 - headLen * sin(angle - wing)).toFloat()
-            val ax2 = (x2 - headLen * cos(angle + wing)).toFloat()
-            val ay2 = (y2 - headLen * sin(angle + wing)).toFloat()
-            val headPath = Path().apply {
-                moveTo(ax1, ay1)
-                lineTo(x2, y2)
-                lineTo(ax2, ay2)
-            }
-            drawPath(
-                path = headPath,
-                color = color,
-                style = Stroke(width = strokePx, cap = StrokeCap.Round, join = StrokeJoin.Round)
-            )
-        }
-        ShapeType.RECTANGLE -> {
-            drawRect(
-                color = color,
-                topLeft = Offset(min(x1, x2), min(y1, y2)),
-                size = Size(abs(x2 - x1).coerceAtLeast(4f), abs(y2 - y1).coerceAtLeast(4f)),
-                style = style
-            )
-        }
-        ShapeType.CIRCLE -> {
-            val cx = (x1 + x2) / 2f
-            val cy = (y1 + y2) / 2f
-            val r = (hypot(x2 - x1, y2 - y1) / 2f).coerceAtLeast(4f)
-            drawCircle(
-                color = color,
-                radius = r,
-                center = Offset(cx, cy),
-                style = style
-            )
-        }
-        ShapeType.OVAL -> {
-            drawOval(
-                color = color,
-                topLeft = Offset(min(x1, x2), min(y1, y2)),
-                size = Size(abs(x2 - x1).coerceAtLeast(4f), abs(y2 - y1).coerceAtLeast(4f)),
-                style = style
+        // Smooth 60fps Active Transform Box Overlay on this page
+        if (activeDraftOnPage != null) {
+            ActiveTransformOverlay(
+                draft = activeDraftOnPage,
+                pagePixelSize = pagePixelSize,
+                stampBitmaps = stampBitmaps,
+                onApply = onApplyActiveDraft,
+                onDelete = onDeleteActiveDraft
             )
         }
     }
 }
 
-private fun hitTestEditItem(items: List<PageEditItem>, nx: Float, ny: Float): PageEditItem? {
+private fun hitTestCommittedItem(
+    items: List<PageEditItem>,
+    nx: Float,
+    ny: Float
+): PageEditItem? {
     return items.asReversed().firstOrNull { item ->
         when (item) {
-            is PageEditItem.ImageAddition ->
-                nx in item.normX..(item.normX + item.normWidth) &&
-                    ny in item.normY..(item.normY + item.normHeight)
-
-            is PageEditItem.SignatureAddition ->
-                nx in item.normX..(item.normX + item.normWidth) &&
-                    ny in item.normY..(item.normY + item.normHeight)
-
-            is PageEditItem.TextAddition ->
-                nx in (item.normX - 0.03f)..(item.normX + 0.35f) &&
-                    ny in (item.normY - 0.03f)..(item.normY + 0.08f)
-
-            is PageEditItem.SquareErase ->
-                nx in min(item.normLeft, item.normRight)..max(item.normLeft, item.normRight) &&
-                    ny in min(item.normTop, item.normBottom)..max(item.normTop, item.normBottom)
-
-            is PageEditItem.TextReplacement ->
-                nx in min(item.normLeft, item.normRight)..max(item.normLeft, item.normRight) &&
-                    ny in min(item.normTop, item.normBottom)..max(item.normTop, item.normBottom)
-
-            is PageEditItem.ShapeItem -> {
-                val left = min(item.startX, item.endX) - 0.03f
-                val right = max(item.startX, item.endX) + 0.03f
-                val top = min(item.startY, item.endY) - 0.03f
-                val bottom = max(item.startY, item.endY) + 0.03f
-                nx in left..right && ny in top..bottom
+            is PageEditItem.ImageAddition -> {
+                nx in (item.normX - 0.02f)..(item.normX + item.normWidth + 0.02f) &&
+                    ny in (item.normY - 0.02f)..(item.normY + item.normHeight + 0.02f)
             }
-
-            is PageEditItem.HighlighterStroke -> false
+            is PageEditItem.SignatureAddition -> {
+                nx in (item.normX - 0.02f)..(item.normX + item.normWidth + 0.02f) &&
+                    ny in (item.normY - 0.02f)..(item.normY + item.normHeight + 0.02f)
+            }
+            is PageEditItem.TextAddition -> {
+                val estW = (item.text.length.coerceAtLeast(4) * item.fontSizePt * 0.58f / 595f).coerceIn(0.12f, 0.80f)
+                val estH = ((item.fontSizePt * 1.8f) / 842f).coerceAtLeast(0.045f)
+                nx in (item.normX - 0.02f)..(item.normX + estW + 0.02f) &&
+                    ny in (item.normY - 0.02f)..(item.normY + estH + 0.02f)
+            }
+            is PageEditItem.SquareErase -> {
+                nx in min(item.normLeft, item.normRight)..max(item.normLeft, item.normRight) &&
+                    ny in min(item.normTop, item.normBottom)..max(item.normTop, item.normBottom)
+            }
+            is PageEditItem.ShapeItem -> {
+                nx in (min(item.startX, item.endX) - 0.03f)..(max(item.startX, item.endX) + 0.03f) &&
+                    ny in (min(item.startY, item.endY) - 0.03f)..(max(item.startY, item.endY) + 0.03f)
+            }
+            else -> false
         }
-    }
-}
-
-private fun moveEditItem(item: PageEditItem, dx: Float, dy: Float): PageEditItem {
-    return when (item) {
-        is PageEditItem.TextAddition -> item.copy(
-            normX = (item.normX + dx).coerceIn(0.01f, 0.94f),
-            normY = (item.normY + dy).coerceIn(0.01f, 0.96f)
-        )
-        is PageEditItem.ImageAddition -> item.copy(
-            normX = (item.normX + dx).coerceIn(0f, (1f - item.normWidth).coerceAtLeast(0.05f)),
-            normY = (item.normY + dy).coerceIn(0f, (1f - item.normHeight).coerceAtLeast(0.05f))
-        )
-        is PageEditItem.SignatureAddition -> item.copy(
-            normX = (item.normX + dx).coerceIn(0f, (1f - item.normWidth).coerceAtLeast(0.05f)),
-            normY = (item.normY + dy).coerceIn(0f, (1f - item.normHeight).coerceAtLeast(0.05f))
-        )
-        is PageEditItem.SquareErase -> item.copy(
-            normLeft = (item.normLeft + dx).coerceIn(0f, 0.98f),
-            normRight = (item.normRight + dx).coerceIn(0.02f, 1f),
-            normTop = (item.normTop + dy).coerceIn(0f, 0.98f),
-            normBottom = (item.normBottom + dy).coerceIn(0.02f, 1f)
-        )
-        is PageEditItem.ShapeItem -> item.copy(
-            startX = (item.startX + dx).coerceIn(0f, 1f),
-            endX = (item.endX + dx).coerceIn(0f, 1f),
-            startY = (item.startY + dy).coerceIn(0f, 1f),
-            endY = (item.endY + dy).coerceIn(0f, 1f)
-        )
-        is PageEditItem.TextReplacement -> item.copy(
-            normLeft = (item.normLeft + dx).coerceIn(0f, 0.95f),
-            normRight = (item.normRight + dx).coerceIn(0.05f, 1f),
-            normTop = (item.normTop + dy).coerceIn(0f, 0.95f),
-            normBottom = (item.normBottom + dy).coerceIn(0.05f, 1f)
-        )
-        is PageEditItem.HighlighterStroke -> item
     }
 }

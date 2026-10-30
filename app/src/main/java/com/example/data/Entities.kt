@@ -12,6 +12,9 @@ data class WorkspacePdfEntity(
     val fileSizeBytes: Long,
     val sourceCategory: String, // PDF, DOCUMENT, IMAGE, EXCEL, POWERPOINT, MERGED, SAMPLE
     val isPasswordProtected: Boolean = false,
+    val originalUriString: String? = null,
+    val downloadUriString: String? = null,
+    val savedLocationLabel: String = "",
     val updatedAt: Long = System.currentTimeMillis()
 )
 

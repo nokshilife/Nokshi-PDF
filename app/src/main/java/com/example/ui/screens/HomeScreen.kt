@@ -1,9 +1,16 @@
 package com.example.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -27,6 +35,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -35,6 +44,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,12 +64,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.example.R
 import com.example.data.WorkspacePdfEntity
 import com.example.ui.components.NokshiIcons
+import com.example.ui.i18n.tr
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -77,20 +90,24 @@ fun HomeScreen(
     onCreateSamplePdf: () -> Unit,
     onNavigateToMergeTab: () -> Unit,
     onOpenPdfInEditor: (WorkspacePdfEntity) -> Unit,
-    onRunOcrOnPdf: (WorkspacePdfEntity) -> Unit,
+    onOpenInLens: (WorkspacePdfEntity) -> Unit,
+    onReadAloud: (WorkspacePdfEntity) -> Unit,
     onConvertPdfToImages: (WorkspacePdfEntity) -> Unit,
     onManagePassword: (WorkspacePdfEntity) -> Unit,
     onDeletePdf: (WorkspacePdfEntity) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val shareTitle = tr("Share PDF", "PDF শেয়ার করুন")
 
     LazyColumn(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
-        modifier = modifier.fillMaxSize()
+        modifier = modifier
+            .fillMaxSize()
+            .testTag("home_lazy_column")
     ) {
-        // Nokshi Kantha Stitched Hero Banner
+        // Nokshi Kantha Stitched Hero Banner with High-Contrast Primary CTA (Requirement ঙ)
         item {
             val primary = MaterialTheme.colorScheme.primary
             val secondary = MaterialTheme.colorScheme.secondary
@@ -120,14 +137,14 @@ fun HomeScreen(
                     }
                     .padding(22.dp)
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
                         Image(
                             painter = painterResource(id = R.drawable.ic_nokshi_logo),
-                            contentDescription = "Nokshi PDF লোগো",
+                            contentDescription = "Nokshi PDF Logo",
                             modifier = Modifier
                                 .size(62.dp)
                                 .clip(RoundedCornerShape(16.dp))
@@ -140,9 +157,12 @@ fun HomeScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "ডকুমেন্ট, ইমেজ, এক্সেল ও প্রেজেন্টেশন কনভার্টার • স্মার্ট এডিটর • সিগনেচার ও OCR",
+                                text = tr(
+                                    "Full-Width PDF Viewer • Smart Editor • Signature • Lens & Read Aloud",
+                                    "ফুল-উইডথ PDF ভিউয়ার • স্মার্ট এডিটর • সিগনেচার • Lens ও Read Aloud"
+                                ),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.90f)
+                                color = Color.White.copy(alpha = 0.94f)
                             )
                         }
                     }
@@ -151,40 +171,65 @@ fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
+                        // Ultra High-Contrast Golden-Amber CTA Button (Requirement ঙ)
                         Button(
                             onClick = onOpenExistingPdfPicker,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.White,
-                                contentColor = primary
+                                containerColor = Color(0xFFFFCA28),
+                                contentColor = Color(0xFF1A1100)
                             ),
+                            elevation = ButtonDefaults.buttonElevation(
+                                defaultElevation = 6.dp,
+                                pressedElevation = 10.dp
+                            ),
+                            border = BorderStroke(1.5.dp, Color.White),
+                            shape = RoundedCornerShape(14.dp),
                             modifier = Modifier
-                                .weight(1f)
+                                .weight(1.1f)
+                                .height(50.dp)
                                 .testTag("hero_open_pdf_button")
                         ) {
-                            Icon(NokshiIcons.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("PDF ওপেন করুন", fontWeight = FontWeight.Bold)
+                            Icon(NokshiIcons.FolderOpen, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Spacer(Modifier.width(7.dp))
+                            Text(
+                                text = tr("Open PDF", "PDF ওপেন করুন"),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.ExtraBold,
+                                maxLines = 1
+                            )
                         }
-                        FilledTonalButton(
+                        OutlinedButton(
                             onClick = onOpenWriteDocDialog,
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = Color.White.copy(alpha = 0.16f),
+                                contentColor = Color.White
+                            ),
+                            border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.85f)),
+                            shape = RoundedCornerShape(14.dp),
                             modifier = Modifier
                                 .weight(1f)
+                                .height(50.dp)
                                 .testTag("hero_write_pdf_button")
                         ) {
-                            Icon(NokshiIcons.EditNote, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Icon(NokshiIcons.EditNote, contentDescription = null, modifier = Modifier.size(19.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text("ডকুমেন্ট লিখুন")
+                            Text(
+                                text = tr("Write PDF", "ডকুমেন্ট লিখুন"),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
                         }
                     }
                 }
             }
         }
 
-        // Section 1: File-to-PDF Converters (Requirement 1)
+        // Section 1: File-to-PDF Converters
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "ফাইল থেকে PDF ওপেন বা কনভার্ট করুন",
+                    text = tr("Open or Convert Files to PDF", "ফাইল থেকে PDF ওপেন বা কনভার্ট করুন"),
                     style = MaterialTheme.typography.titleMedium
                 )
                 Row(
@@ -192,7 +237,7 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     ConvertFormatCard(
-                        title = "ডকুমেন্ট",
+                        title = tr("Document", "ডকুমেন্ট"),
                         subtitle = "DOCX, TXT, RTF",
                         icon = NokshiIcons.Description,
                         accent = MaterialTheme.colorScheme.primary,
@@ -201,7 +246,7 @@ fun HomeScreen(
                         tag = "home_convert_doc"
                     )
                     ConvertFormatCard(
-                        title = "ইমেজ",
+                        title = tr("Images", "ইমেজ"),
                         subtitle = "JPG, PNG → PDF",
                         icon = NokshiIcons.Image,
                         accent = MaterialTheme.colorScheme.secondary,
@@ -215,8 +260,8 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     ConvertFormatCard(
-                        title = "এক্সেল শীট",
-                        subtitle = "XLSX, CSV টেবিল",
+                        title = tr("Excel Sheet", "এক্সেল শীট"),
+                        subtitle = tr("XLSX, CSV Table", "XLSX, CSV টেবিল"),
                         icon = NokshiIcons.TableChart,
                         accent = Color(0xFF0F6E56),
                         onClick = onConvertExcelPicker,
@@ -224,8 +269,8 @@ fun HomeScreen(
                         tag = "home_convert_excel"
                     )
                     ConvertFormatCard(
-                        title = "পাওয়ারপয়েন্ট",
-                        subtitle = "PPTX স্লাইড",
+                        title = tr("PowerPoint", "পাওয়ারপয়েন্ট"),
+                        subtitle = tr("PPTX Slides", "PPTX স্লাইড"),
                         icon = NokshiIcons.Slideshow,
                         accent = Color(0xFFB45309),
                         onClick = onConvertPptPicker,
@@ -236,15 +281,15 @@ fun HomeScreen(
             }
         }
 
-        // Section 2: Quick Power Actions Strip
+        // Section 2: Quick Power Actions Strip + Storage Info Note
         item {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("দ্রুত প্রো টুলস", style = MaterialTheme.typography.titleMedium)
+                Text(tr("Quick Pro Tools", "দ্রুত প্রো টুলস"), style = MaterialTheme.typography.titleMedium)
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     item {
                         AssistChip(
                             onClick = onNavigateToMergeTab,
-                            label = { Text("PDF মার্জ করুন") },
+                            label = { Text(tr("Merge PDFs", "PDF মার্জ করুন")) },
                             leadingIcon = {
                                 Icon(NokshiIcons.CallMerge, contentDescription = null, modifier = Modifier.size(18.dp))
                             },
@@ -254,7 +299,7 @@ fun HomeScreen(
                     item {
                         AssistChip(
                             onClick = onCreateSamplePdf,
-                            label = { Text("নমুনা PDF তৈরি করুন") },
+                            label = { Text(tr("Create Sample PDF", "নমুনা PDF তৈরি করুন")) },
                             leadingIcon = {
                                 Icon(NokshiIcons.AutoAwesome, contentDescription = null, modifier = Modifier.size(18.dp))
                             },
@@ -262,6 +307,14 @@ fun HomeScreen(
                         )
                     }
                 }
+                Text(
+                    text = tr(
+                        "📁 Save Rule: Opened PDFs save directly to the original file; new/converted PDFs save to your Download folder.",
+                        "📁 সেভ নিয়ম: ওপেন করা পুরনো PDF মূল ফাইলেই সেভ হয়; নতুন বা কনভার্ট করা PDF সরাসরি Download ফোল্ডারে সেভ হয়।"
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
@@ -272,9 +325,9 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("আপনার ওয়ার্কস্পেস PDF সমূহ", style = MaterialTheme.typography.titleMedium)
+                Text(tr("Your PDF Documents", "আপনার ওয়ার্কস্পেস PDF সমূহ"), style = MaterialTheme.typography.titleMedium)
                 Text(
-                    text = "${workspacePdfs.size}টি ফাইল",
+                    text = tr("${workspacePdfs.size} files", "${workspacePdfs.size}টি ফাইল"),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -304,11 +357,14 @@ fun HomeScreen(
                             modifier = Modifier.size(44.dp)
                         )
                         Text(
-                            text = "এখনও কোনো PDF যোগ করা হয়নি",
+                            text = tr("No PDFs opened yet", "এখনও কোনো PDF যোগ করা হয়নি"),
                             style = MaterialTheme.typography.titleMedium
                         )
                         Text(
-                            text = "ডিভাইস থেকে ডকুমেন্ট, ছবি, এক্সেল বা পাওয়ারপয়েন্ট কনভার্ট করুন অথবা এক ট্যাপে নমুনা PDF তৈরি করে সব এডিটিং ও OCR টুল পরীক্ষা করুন।",
+                            text = tr(
+                                "Open any PDF or convert Document, Image, Excel, or PowerPoint files — or tap below to generate a starter PDF.",
+                                "ডিভাইস থেকে PDF ওপেন করুন অথবা ডকুমেন্ট, ছবি, এক্সেল বা পাওয়ারপয়েন্ট কনভার্ট করুন।"
+                            ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -318,7 +374,7 @@ fun HomeScreen(
                         ) {
                             Icon(NokshiIcons.AutoAwesome, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
-                            Text("নমুনা নকশি PDF তৈরি করুন")
+                            Text(tr("Create Sample Nokshi PDF", "নমুনা নকশি PDF তৈরি করুন"))
                         }
                     }
                 }
@@ -328,7 +384,8 @@ fun HomeScreen(
                 WorkspacePdfCard(
                     pdf = pdf,
                     onEdit = { onOpenPdfInEditor(pdf) },
-                    onOcr = { onRunOcrOnPdf(pdf) },
+                    onOpenInLens = { onOpenInLens(pdf) },
+                    onReadAloud = { onReadAloud(pdf) },
                     onPdfToImages = { onConvertPdfToImages(pdf) },
                     onPassword = { onManagePassword(pdf) },
                     onShare = {
@@ -345,7 +402,7 @@ fun HomeScreen(
                                     putExtra(Intent.EXTRA_STREAM, uri)
                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
-                                context.startActivity(Intent.createChooser(send, "PDF শেয়ার করুন"))
+                                context.startActivity(Intent.createChooser(send, shareTitle))
                             }
                         }
                     },
@@ -354,7 +411,119 @@ fun HomeScreen(
             }
         }
 
-        item { Spacer(Modifier.height(24.dp)) }
+        // Requirements ৫ & ৬: Developer Credit Footer at the very bottom of Home Screen
+        item {
+            DeveloperCreditFooterCard()
+        }
+
+        item { Spacer(Modifier.height(12.dp)) }
+    }
+}
+
+@Composable
+private fun DeveloperCreditFooterCard() {
+    val context = LocalContext.current
+    val websiteUrl = "https://jalil.bcs24admin.org.bd/"
+    val mobileNumber = "+880 1717 501021"
+    val copiedToastText = tr("Mobile number copied: +880 1717 501021", "মোবাইল নাম্বার কপি হয়েছে: +880 1717 501021")
+
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        shape = RoundedCornerShape(18.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("developer_credit_footer")
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+        ) {
+            Text(
+                text = "Developed by: Md A Jalil (15703)",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                text = "24th BCS Administration Cadre",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+
+            // Clickable URL Row (min 48dp touch target) -> Opens in browser
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable {
+                        runCatching {
+                            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(websiteUrl)).apply {
+                                addCategory(Intent.CATEGORY_BROWSABLE)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(browserIntent)
+                        }
+                    }
+                    .padding(horizontal = 10.dp)
+                    .testTag("developer_website_link")
+            ) {
+                Text(
+                    text = websiteUrl,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    textDecoration = TextDecoration.Underline,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.width(6.dp))
+                Icon(
+                    imageVector = NokshiIcons.OpenInNew,
+                    contentDescription = tr("Open website in browser", "ওয়েবসাইট ব্রাউজারে ওপেন করুন"),
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            // Mobile Number + Copy Icon Button beside it (48dp touch target)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = "Mobile: $mobileNumber",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                IconButton(
+                    onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                        clipboard?.setPrimaryClip(ClipData.newPlainText("Developer Mobile", mobileNumber))
+                        Toast.makeText(context, copiedToastText, Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("copy_developer_mobile_button")
+                ) {
+                    Icon(
+                        imageVector = NokshiIcons.ContentCopy,
+                        contentDescription = tr("Copy mobile number", "মোবাইল নাম্বার কপি করুন"),
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(19.dp)
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -406,7 +575,8 @@ private fun ConvertFormatCard(
 private fun WorkspacePdfCard(
     pdf: WorkspacePdfEntity,
     onEdit: () -> Unit,
-    onOcr: () -> Unit,
+    onOpenInLens: () -> Unit,
+    onReadAloud: () -> Unit,
     onPdfToImages: () -> Unit,
     onPassword: () -> Unit,
     onShare: () -> Unit,
@@ -414,6 +584,10 @@ private fun WorkspacePdfCard(
 ) {
     val kb = (pdf.fileSizeBytes / 1024L).coerceAtLeast(1L)
     val dateStr = SimpleDateFormat("dd MMM, hh:mm a", Locale.getDefault()).format(Date(pdf.updatedAt))
+    val locationLabel = pdf.savedLocationLabel.ifBlank {
+        if (!pdf.originalUriString.isNullOrBlank()) tr("Original Device File", "মূল ডিভাইস ফাইল")
+        else "Download/${pdf.title}.pdf"
+    }
 
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -424,7 +598,7 @@ private fun WorkspacePdfCard(
             .clickable(onClick = onEdit)
             .testTag("workspace_pdf_card_${pdf.id}")
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
@@ -451,7 +625,10 @@ private fun WorkspacePdfCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "${pdf.pageCount} পেজ • ${kb} KB • $dateStr",
+                        text = tr(
+                            "${pdf.pageCount} pages • ${kb} KB • $dateStr",
+                            "${pdf.pageCount} পেজ • ${kb} KB • $dateStr"
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -469,46 +646,87 @@ private fun WorkspacePdfCard(
                 }
             }
 
-            Spacer(Modifier.height(10.dp))
+            // Explicit Save Location Badge (Requirement ছ)
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                ) {
+                    Icon(
+                        imageVector = NokshiIcons.Folder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = locationLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
 
-            // Quick Actions Row for Each PDF
+            // Side-by-Side Open in Lens + Read Aloud + Edit + Image Actions (Requirement চ)
             Row(
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+            ) {
+                AssistChip(
+                    onClick = onEdit,
+                    label = { Text(tr("View / Edit", "ভিউ / এডিট")) },
+                    leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(15.dp)) }
+                )
+                AssistChip(
+                    onClick = onOpenInLens,
+                    label = { Text("Open in Lens") },
+                    leadingIcon = { Icon(NokshiIcons.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
+                    )
+                )
+                AssistChip(
+                    onClick = onReadAloud,
+                    label = { Text("Read Aloud") },
+                    leadingIcon = { Icon(NokshiIcons.VolumeUp, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.75f)
+                    )
+                )
+                AssistChip(
+                    onClick = onPdfToImages,
+                    label = { Text(tr("Images", "ইমেজ")) },
+                    leadingIcon = { Icon(NokshiIcons.Image, contentDescription = null, modifier = Modifier.size(15.dp)) }
+                )
+            }
+
+            Row(
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    AssistChip(
-                        onClick = onEdit,
-                        label = { Text("এডিট") },
-                        leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                    )
-                    AssistChip(
-                        onClick = onOcr,
-                        label = { Text("OCR") },
-                        leadingIcon = { Icon(NokshiIcons.DocumentScanner, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                    )
-                    AssistChip(
-                        onClick = onPdfToImages,
-                        label = { Text("ইমেজ") },
-                        leadingIcon = { Icon(NokshiIcons.Image, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                    )
+                IconButton(onClick = onPassword, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Lock, contentDescription = tr("Password Lock", "পাসওয়ার্ড লক"), modifier = Modifier.size(18.dp))
                 }
-                Row {
-                    IconButton(onClick = onPassword, modifier = Modifier.size(38.dp)) {
-                        Icon(Icons.Default.Lock, contentDescription = "পাসওয়ার্ড লক", modifier = Modifier.size(19.dp))
-                    }
-                    IconButton(onClick = onShare, modifier = Modifier.size(38.dp)) {
-                        Icon(Icons.Default.Share, contentDescription = "শেয়ার", modifier = Modifier.size(19.dp))
-                    }
-                    IconButton(onClick = onDelete, modifier = Modifier.size(38.dp)) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "মুছে ফেলুন",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
+                IconButton(onClick = onShare, modifier = Modifier.size(36.dp)) {
+                    Icon(Icons.Default.Share, contentDescription = tr("Share", "শেয়ার"), modifier = Modifier.size(18.dp))
+                }
+                IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = tr("Delete", "মুছে ফেলুন"),
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }

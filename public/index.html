@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Nokshi PDF — Full APK Download</title>
+  <title>Nokshi PDF — Official APK Download</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -21,7 +21,7 @@
       background: #FFFFFF;
       border: 2px solid #8E1D2A;
       border-radius: 22px;
-      max-width: 460px;
+      max-width: 470px;
       width: 100%;
       padding: 32px 24px;
       text-align: center;
@@ -59,16 +59,17 @@
       width: 100%;
       border: none;
       cursor: pointer;
-      background: #8E1D2A;
-      color: #FFFFFF;
-      font-weight: 700;
+      background: #FFCA28;
+      color: #1A1100;
+      border: 2px solid #8E1D2A;
+      font-weight: 800;
       font-size: 16px;
       padding: 15px 24px;
       border-radius: 14px;
-      transition: background 0.2s, opacity 0.2s;
+      transition: transform 0.15s, opacity 0.2s;
     }
     button.btn:hover:not(:disabled) {
-      background: #6E1520;
+      transform: translateY(-1px);
     }
     button.btn:disabled {
       opacity: 0.72;
@@ -123,11 +124,11 @@
   <div class="card">
     <img src="/assets/aistudio/nokshipdf_256_80510b2f.png" alt="Nokshi PDF Logo" />
     <h1>Nokshi PDF</h1>
-    <div class="badge">পূর্ণ অরিজিনাল বিল্ড • 69.1 MB (Unmodified Gradle APK)</div>
-    <p>অপ্টিমাইজ ছাড়া সম্পূর্ণ অরিজিনাল <strong>Nokshi-PDF.apk</strong> (অফলাইন ML Kit OCR ও 16KB পেজ অ্যালাইনমেন্টসহ) ডাউনলোড করতে নিচের বাটনে ট্যাপ করুন।</p>
+    <div id="sizeBadge" class="badge">অরিজিনাল ফুল বিল্ড • Gradle Signed APK</div>
+    <p>সর্বশেষ আপডেটেড <strong>Nokshi-PDF.apk</strong> (দুই আঙুলে জুম, ডাবল-ট্যাপ নির্দিষ্ট পেজ এডিটিং ও Google Lens, পেজ ডিলিট/আগে-পিছে/রোটেশন, ট্রান্সপারেন্ট সিগনেচার ও Read Aloud সহ) ডাউনলোড করতে নিচের বাটনে ট্যাপ করুন।</p>
 
     <button id="dlBtn" class="btn" onclick="startDownload()">
-      পূর্ণ সাইজের Nokshi-PDF.apk ডাউনলোড করুন (69.1 MB)
+      Nokshi-PDF.apk ডাউনলোড করুন
     </button>
 
     <div id="progressWrap" class="progress-wrap">
@@ -144,12 +145,27 @@
 
     <div class="meta">
       Package: <code>com.aistudio.nokshipdf.bngkxp</code><br />
-      Version 1.0 • Android 7.0 – Android 16 (API 24–36)
+      English (Default) &amp; বাংলা • Android 7.0 – Android 16 (API 24–36)
     </div>
   </div>
 
   <script>
-    const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MB per request (safely under Cloud Run 32 MB cap)
+    const CHUNK_SIZE = 10 * 1024 * 1024;
+    let cachedMbStr = '';
+
+    async function refreshApkMeta() {
+      try {
+        const res = await fetch('/api/apk-info?t=' + Date.now(), { credentials: 'include', cache: 'no-store' });
+        if (!res.ok) return;
+        const info = await res.json();
+        cachedMbStr = (info.size / (1024 * 1024)).toFixed(1) + ' MB';
+        document.getElementById('sizeBadge').textContent = 'অরিজিনাল ফুল বিল্ড • ' + cachedMbStr;
+        const btn = document.getElementById('dlBtn');
+        if (!btn.disabled) {
+          btn.textContent = 'Nokshi-PDF.apk ডাউনলোড করুন (' + cachedMbStr + ')';
+        }
+      } catch (_) {}
+    }
 
     async function startDownload() {
       const btn = document.getElementById('dlBtn');
@@ -167,17 +183,18 @@
       percentText.textContent = '0%';
 
       try {
-        const infoRes = await fetch('/api/apk-info?t=' + Date.now(), { credentials: 'include' });
+        const infoRes = await fetch('/api/apk-info?t=' + Date.now(), { credentials: 'include', cache: 'no-store' });
         if (!infoRes.ok) throw new Error('সার্ভার থেকে ফাইল তথ্য পাওয়া যায়নি (HTTP ' + infoRes.status + ')');
         const info = await infoRes.json();
         const totalSize = info.size;
+        const mbTotal = (totalSize / (1024 * 1024)).toFixed(1);
 
         const chunks = [];
         let downloaded = 0;
 
         while (downloaded < totalSize) {
           const end = Math.min(downloaded + CHUNK_SIZE, totalSize);
-          const partRes = await fetch(`/api/apk-chunk?start=${downloaded}&end=${end}`, {
+          const partRes = await fetch(`/api/apk-chunk?start=${downloaded}&end=${end}&t=${Date.now()}`, {
             credentials: 'include',
             cache: 'no-store'
           });
@@ -194,7 +211,6 @@
           const pct = Math.round((downloaded / totalSize) * 100);
           fill.style.width = pct + '%';
           const mbDone = (downloaded / (1024 * 1024)).toFixed(1);
-          const mbTotal = (totalSize / (1024 * 1024)).toFixed(1);
           statusText.textContent = `ডাউনলোড হচ্ছে: ${mbDone} MB / ${mbTotal} MB`;
           percentText.textContent = pct + '%';
         }
@@ -211,7 +227,7 @@
         setTimeout(() => URL.revokeObjectURL(url), 60000);
 
         statusText.textContent = 'সম্পূর্ণ ডাউনলোড সম্পন্ন হয়েছে! ফাইলটি ওপেন করে ইনস্টল করুন।';
-        btn.textContent = 'আবার ডাউনলোড করুন (69.1 MB)';
+        btn.textContent = `আবার ডাউনলোড করুন (${mbTotal} MB)`;
         btn.disabled = false;
       } catch (err) {
         errorBox.textContent = 'ত্রুটি: ' + err.message;
@@ -221,10 +237,12 @@
       }
     }
 
-    // Auto-start if ?dl=1 is in URL
-    if (new URLSearchParams(window.location.search).get('dl') === '1') {
-      window.addEventListener('DOMContentLoaded', () => setTimeout(startDownload, 300));
-    }
+    window.addEventListener('DOMContentLoaded', () => {
+      refreshApkMeta();
+      if (new URLSearchParams(window.location.search).get('dl') === '1') {
+        setTimeout(startDownload, 300);
+      }
+    });
   </script>
 </body>
 </html>

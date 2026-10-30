@@ -15,7 +15,10 @@ class NokshiRepository(
         file: File,
         pageCount: Int,
         sourceCategory: String,
-        isPasswordProtected: Boolean = false
+        isPasswordProtected: Boolean = false,
+        originalUriString: String? = null,
+        downloadUriString: String? = null,
+        savedLocationLabel: String = ""
     ): WorkspacePdfEntity {
         val existing = pdfDao.findByPath(file.absolutePath)
         return if (existing != null) {
@@ -24,6 +27,9 @@ class NokshiRepository(
                 pageCount = pageCount,
                 fileSizeBytes = file.length(),
                 isPasswordProtected = isPasswordProtected,
+                originalUriString = originalUriString ?: existing.originalUriString,
+                downloadUriString = downloadUriString ?: existing.downloadUriString,
+                savedLocationLabel = savedLocationLabel.ifBlank { existing.savedLocationLabel },
                 updatedAt = System.currentTimeMillis()
             )
             pdfDao.updatePdf(updated)
@@ -36,6 +42,9 @@ class NokshiRepository(
                 fileSizeBytes = file.length(),
                 sourceCategory = sourceCategory,
                 isPasswordProtected = isPasswordProtected,
+                originalUriString = originalUriString,
+                downloadUriString = downloadUriString,
+                savedLocationLabel = savedLocationLabel,
                 updatedAt = System.currentTimeMillis()
             )
             val id = pdfDao.insertPdf(entity)

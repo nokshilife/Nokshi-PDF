@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.data.WorkspacePdfEntity
 import com.example.ui.components.NokshiIcons
+import com.example.ui.i18n.tr
 
 @Composable
 fun ToolsAndMergeScreen(
@@ -54,7 +55,8 @@ fun ToolsAndMergeScreen(
     onPickPptToPdf: () -> Unit,
     onImportMultiplePdfsForMerge: () -> Unit,
     onMergeSelectedPdfs: (List<WorkspacePdfEntity>, String) -> Unit,
-    onPickPdfForOcr: () -> Unit,
+    onPickPdfForLens: () -> Unit,
+    onPickPdfForReadAloud: () -> Unit,
     onPickPdfForImages: () -> Unit,
     onPickPdfForPassword: () -> Unit,
     modifier: Modifier = Modifier
@@ -72,20 +74,26 @@ fun ToolsAndMergeScreen(
         modifier = modifier.fillMaxSize()
     ) {
         item {
-            Text("অল-ইন-ওয়ান PDF টুলবক্স ও মার্জ স্টুডিও", style = MaterialTheme.typography.headlineSmall)
             Text(
-                text = "যেকোনো ফরম্যাট থেকে PDF কনভার্ট, একাধিক PDF একত্রে মার্জ, পাসওয়ার্ড লক এবং OCR টেক্সট এক্সট্রাক্ট।",
+                text = tr("All-in-One PDF Toolbox & Merge Studio", "অল-ইন-ওয়ান PDF টুলবক্স ও মার্জ স্টুডিও"),
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Text(
+                text = tr(
+                    "Convert files to PDF (saved in Download/), merge multiple PDFs, protect with passwords, or launch Google Lens & Read Aloud.",
+                    "যেকোনো ফরম্যাট থেকে PDF কনভার্ট (Download ফোল্ডারে সেভ হয়), একাধিক PDF মার্জ, পাসওয়ার্ড লক এবং Google Lens ও Read Aloud।"
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
-        // Quick Converters Row Cards
+        // Quick Converters & Lens/Read Aloud Row Cards
         item {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     ToolActionTile(
-                        title = "ডকুমেন্ট → PDF",
+                        title = tr("Document → PDF", "ডকুমেন্ট → PDF"),
                         subtitle = "DOCX, TXT, HTML",
                         icon = NokshiIcons.Description,
                         onClick = onPickDocumentToPdf,
@@ -93,7 +101,7 @@ fun ToolsAndMergeScreen(
                         tag = "tools_doc_to_pdf"
                     )
                     ToolActionTile(
-                        title = "ইমেজ → PDF",
+                        title = tr("Images → PDF", "ইমেজ → PDF"),
                         subtitle = "JPG, PNG, WEBP",
                         icon = NokshiIcons.Image,
                         onClick = onPickImagesToPdf,
@@ -103,49 +111,62 @@ fun ToolsAndMergeScreen(
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     ToolActionTile(
-                        title = "এক্সেল → PDF",
-                        subtitle = "XLSX, CSV শীট",
+                        title = tr("Excel → PDF", "এক্সেল → PDF"),
+                        subtitle = tr("XLSX, CSV Sheet", "XLSX, CSV শীট"),
                         icon = NokshiIcons.TableChart,
                         onClick = onPickExcelToPdf,
                         modifier = Modifier.weight(1f),
                         tag = "tools_excel_to_pdf"
                     )
                     ToolActionTile(
-                        title = "প্রেজেন্টেশন → PDF",
-                        subtitle = "PPTX স্লাইড",
+                        title = tr("Presentation → PDF", "প্রেজেন্টেশন → PDF"),
+                        subtitle = tr("PPTX Slides", "PPTX স্লাইড"),
                         icon = NokshiIcons.Slideshow,
                         onClick = onPickPptToPdf,
                         modifier = Modifier.weight(1f),
                         tag = "tools_ppt_to_pdf"
                     )
                 }
+                // Requirement চ: Side-by-Side Open in Lens + Read Aloud Buttons
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     ToolActionTile(
-                        title = "OCR টেক্সট এক্সট্রাক্ট",
-                        subtitle = "ইমেজ + Google Lens",
-                        icon = NokshiIcons.DocumentScanner,
-                        onClick = onPickPdfForOcr,
+                        title = "Open in Lens",
+                        subtitle = tr("PDF → Image → Google Lens", "PDF → ইমেজ → Google Lens"),
+                        icon = NokshiIcons.CenterFocusStrong,
+                        onClick = onPickPdfForLens,
                         modifier = Modifier.weight(1f),
-                        tag = "tools_ocr_lens"
+                        tag = "tools_open_in_lens"
                     )
                     ToolActionTile(
-                        title = "PDF → ইমেজ ও লক",
-                        subtitle = "ইমেজ এক্সপোর্ট / পাসওয়ার্ড",
-                        icon = Icons.Default.Lock,
-                        onClick = onPickPdfForPassword,
+                        title = "Read Aloud",
+                        subtitle = tr("Lens Copy → Edge Reader", "Lens কপি → Edge ব্রাউজার"),
+                        icon = NokshiIcons.VolumeUp,
+                        onClick = onPickPdfForReadAloud,
                         modifier = Modifier.weight(1f),
-                        tag = "tools_lock_pdf"
+                        tag = "tools_read_aloud"
                     )
                 }
-                OutlinedButton(
-                    onClick = onPickPdfForImages,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("tools_pdf_to_img_button")
-                ) {
-                    Icon(NokshiIcons.Image, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("যেকোনো PDF থেকে হাই-কোয়ালিটি Image কনভার্ট করুন")
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = onPickPdfForImages,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("tools_pdf_to_img_button")
+                    ) {
+                        Icon(NokshiIcons.Image, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(tr("PDF → Images", "PDF → ইমেজ"), maxLines = 1)
+                    }
+                    OutlinedButton(
+                        onClick = onPickPdfForPassword,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("tools_lock_pdf")
+                    ) {
+                        Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text(tr("Password Lock", "পাসওয়ার্ড লক"), maxLines = 1)
+                    }
                 }
             }
         }
@@ -171,7 +192,7 @@ fun ToolsAndMergeScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(NokshiIcons.CallMerge, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                             Spacer(Modifier.width(8.dp))
-                            Text("PDF মার্জ স্টুডিও", style = MaterialTheme.typography.titleLarge)
+                            Text(tr("PDF Merge Studio", "PDF মার্জ স্টুডিও"), style = MaterialTheme.typography.titleLarge)
                         }
                         FilledTonalButton(
                             onClick = onImportMultiplePdfsForMerge,
@@ -179,12 +200,15 @@ fun ToolsAndMergeScreen(
                         ) {
                             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(4.dp))
-                            Text("ফাইল আনুন")
+                            Text(tr("Add Files", "ফাইল আনুন"))
                         }
                     }
 
                     Text(
-                        text = "নিচের তালিকা থেকে ২ বা ততোধিক PDF টিক চিহ্ন দিয়ে ক্রম সাজিয়ে একটি ফাইলে মার্জ করুন:",
+                        text = tr(
+                            "Select 2 or more PDFs below, reorder if needed, and merge into Download/ folder:",
+                            "নিচের তালিকা থেকে ২ বা ততোধিক PDF নির্বাচন করে একটি ফাইলে মার্জ করুন (Download ফোল্ডারে সেভ হবে):"
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -192,7 +216,7 @@ fun ToolsAndMergeScreen(
                     OutlinedTextField(
                         value = mergedName,
                         onValueChange = { mergedName = it },
-                        label = { Text("মার্জ করা নতুন PDF-এর নাম") },
+                        label = { Text(tr("Merged PDF File Name", "মার্জ করা নতুন PDF-এর নাম")) },
                         singleLine = true,
                         modifier = Modifier
                             .fillMaxWidth()
@@ -211,7 +235,12 @@ fun ToolsAndMergeScreen(
                     ) {
                         Icon(NokshiIcons.CallMerge, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("মার্জ করুন (${orderedSelectedEntities.size}টি ফাইল নির্বাচিত)")
+                        Text(
+                            tr(
+                                "Merge PDFs (${orderedSelectedEntities.size} selected)",
+                                "মার্জ করুন (${orderedSelectedEntities.size}টি ফাইল নির্বাচিত)"
+                            )
+                        )
                     }
                 }
             }
@@ -220,7 +249,10 @@ fun ToolsAndMergeScreen(
         if (workspacePdfs.isEmpty()) {
             item {
                 Text(
-                    text = "মার্জ করার জন্য ওপরে ‘ফাইল আনুন’ বাটনে ট্যাপ করে স্টোরেজ থেকে একাধিক PDF যোগ করুন।",
+                    text = tr(
+                        "Tap 'Add Files' above to import multiple PDFs from your device for merging.",
+                        "মার্জ করার জন্য ওপরে ‘ফাইল আনুন’ বাটনে ট্যাপ করে স্টোরেজ থেকে একাধিক PDF যোগ করুন।"
+                    ),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -264,7 +296,10 @@ fun ToolsAndMergeScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "${pdf.pageCount} পেজ • ${pdf.sourceCategory}",
+                                text = tr(
+                                    "${pdf.pageCount} pages • ${pdf.sourceCategory}",
+                                    "${pdf.pageCount} পেজ • ${pdf.sourceCategory}"
+                                ),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -278,7 +313,7 @@ fun ToolsAndMergeScreen(
                                     selectedForMerge[orderIdx] = prev
                                 }
                             ) {
-                                Icon(NokshiIcons.ArrowUpward, contentDescription = "ওপরে নিন", modifier = Modifier.size(18.dp))
+                                Icon(NokshiIcons.ArrowUpward, contentDescription = tr("Move up", "ওপরে নিন"), modifier = Modifier.size(18.dp))
                             }
                             IconButton(
                                 enabled = orderIdx < selectedForMerge.lastIndex,
@@ -288,7 +323,7 @@ fun ToolsAndMergeScreen(
                                     selectedForMerge[orderIdx] = next
                                 }
                             ) {
-                                Icon(NokshiIcons.ArrowDownward, contentDescription = "নিচে নিন", modifier = Modifier.size(18.dp))
+                                Icon(NokshiIcons.ArrowDownward, contentDescription = tr("Move down", "নিচে নিন"), modifier = Modifier.size(18.dp))
                             }
                         }
                     }
@@ -328,11 +363,13 @@ private fun ToolActionTile(
             )
             Spacer(Modifier.width(10.dp))
             Column {
-                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(title, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(
                     subtitle,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }
@@ -359,20 +396,28 @@ fun PasswordVaultDialog(
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Spacer(Modifier.width(8.dp))
-                Text("PDF পাসওয়ার্ড সুরক্ষা")
+                Text(tr("PDF Password Security", "PDF পাসওয়ার্ড সুরক্ষা"))
             }
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "ফাইল: ${pdfEntity.title}",
+                    text = tr("File: ${pdfEntity.title}", "ফাইল: ${pdfEntity.title}"),
                     style = MaterialTheme.typography.labelLarge
+                )
+                Text(
+                    text = tr(
+                        "Saved into Download/ folder as a protected PDF.",
+                        "সুরক্ষিত নতুন PDF সরাসরি Download ফোল্ডারে সেভ হবে।"
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (pdfEntity.isPasswordProtected) {
                     OutlinedTextField(
                         value = currentPwd,
                         onValueChange = { currentPwd = it },
-                        label = { Text("বর্তমান পাসওয়ার্ড") },
+                        label = { Text(tr("Current Password", "বর্তমান পাসওয়ার্ড")) },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
@@ -381,7 +426,7 @@ fun PasswordVaultDialog(
                 OutlinedTextField(
                     value = newPwd,
                     onValueChange = { newPwd = it },
-                    label = { Text("নতুন পাসওয়ার্ড দিন (128-bit Encryption)") },
+                    label = { Text(tr("New Password (128-bit Encryption)", "নতুন পাসওয়ার্ড দিন (128-bit Encryption)")) },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     modifier = Modifier
@@ -393,7 +438,7 @@ fun PasswordVaultDialog(
                         onClick = { onRemovePassword(currentPwd) },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("পাসওয়ার্ড লক সরিয়ে আনলক কপি তৈরি করুন")
+                        Text(tr("Remove Password & Save Unlocked Copy", "পাসওয়ার্ড সরিয়ে আনলক কপি তৈরি করুন"))
                     }
                 }
             }
@@ -404,11 +449,11 @@ fun PasswordVaultDialog(
                 onClick = { onSetPassword(currentPwd, newPwd) },
                 modifier = Modifier.testTag("confirm_password_lock_button")
             ) {
-                Text("পাসওয়ার্ড সেট করুন")
+                Text(tr("Set Password", "পাসওয়ার্ড সেট করুন"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("বাতিল") }
+            TextButton(onClick = onDismiss) { Text(tr("Cancel", "বাতিল")) }
         }
     )
 }
@@ -422,14 +467,19 @@ fun UnlockPdfPasswordDialog(
     var pwd by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("সুরক্ষিত PDF খুলুন") },
+        title = { Text(tr("Unlock Protected PDF", "সুরক্ষিত PDF খুলুন")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("“$pdfTitle” ফাইলটি পাসওয়ার্ড দ্বারা সুরক্ষিত। ওপেন করতে পাসওয়ার্ড লিখুন:")
+                Text(
+                    tr(
+                        "“$pdfTitle” is password-protected. Enter password to open:",
+                        "“$pdfTitle” ফাইলটি পাসওয়ার্ড দ্বারা সুরক্ষিত। ওপেন করতে পাসওয়ার্ড লিখুন:"
+                    )
+                )
                 OutlinedTextField(
                     value = pwd,
                     onValueChange = { pwd = it },
-                    label = { Text("পাসওয়ার্ড") },
+                    label = { Text(tr("Password", "পাসওয়ার্ড")) },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     modifier = Modifier
@@ -443,11 +493,11 @@ fun UnlockPdfPasswordDialog(
                 enabled = pwd.isNotBlank(),
                 onClick = { onSubmitPassword(pwd) }
             ) {
-                Text("খুলুন")
+                Text(tr("Unlock", "খুলুন"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("বাতিল") }
+            TextButton(onClick = onDismiss) { Text(tr("Cancel", "বাতিল")) }
         }
     )
 }
@@ -457,18 +507,20 @@ fun WriteDocumentToPdfDialog(
     onDismiss: () -> Unit,
     onCreatePdf: (title: String, content: String) -> Unit
 ) {
-    var title by remember { mutableStateOf("আমার নকশি ডকুমেন্ট") }
+    val defaultTitle = tr("My Nokshi Document", "আমার নকশি ডকুমেন্ট")
+    var title by remember { mutableStateOf("") }
     var body by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("নতুন ডকুমেন্ট লিখে PDF তৈরি করুন") },
+        title = { Text(tr("Write New Document to PDF", "নতুন ডকুমেন্ট লিখে PDF তৈরি করুন")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("ডকুমেন্টের শিরোনাম") },
+                    placeholder = { Text(defaultTitle) },
+                    label = { Text(tr("Document Title", "ডকুমেন্টের শিরোনাম")) },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -477,26 +529,34 @@ fun WriteDocumentToPdfDialog(
                 OutlinedTextField(
                     value = body,
                     onValueChange = { body = it },
-                    label = { Text("বাংলা বা ইংরেজি অনুচ্ছেদ লিখুন...") },
+                    label = { Text(tr("Write English or Bengali paragraphs...", "বাংলা বা ইংরেজি অনুচ্ছেদ লিখুন...")) },
                     minLines = 5,
                     maxLines = 9,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("write_doc_body_input")
                 )
+                Text(
+                    text = tr(
+                        "📁 Will be saved automatically in your Download folder.",
+                        "📁 নতুন PDF ফাইলটি সরাসরি Download ফোল্ডারে সেভ হবে।"
+                    ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
             }
         },
         confirmButton = {
             Button(
                 enabled = body.isNotBlank() || title.isNotBlank(),
-                onClick = { onCreatePdf(title, body) },
+                onClick = { onCreatePdf(title.trim().ifBlank { defaultTitle }, body) },
                 modifier = Modifier.testTag("confirm_write_doc_pdf_button")
             ) {
-                Text("PDF তৈরি করুন")
+                Text(tr("Create PDF", "PDF তৈরি করুন"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("বাতিল") }
+            TextButton(onClick = onDismiss) { Text(tr("Cancel", "বাতিল")) }
         }
     )
 }

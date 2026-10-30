@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -43,6 +42,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.example.ui.i18n.tr
 
 val NokshiPresetColors = listOf(
     0xFF8E1D2A.toInt(), // Nokshi Maroon
@@ -64,11 +64,12 @@ val NokshiPresetColors = listOf(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ColorPickerDialog(
-    title: String = "কালার পিকার (রঙ নির্বাচন করুন)",
+    title: String? = null,
     initialColorArgb: Int,
     onDismiss: () -> Unit,
     onColorSelected: (Int) -> Unit
 ) {
+    val resolvedTitle = title ?: tr("Pick a Color", "কালার পিকার (রঙ নির্বাচন করুন)")
     val hsvInit = remember(initialColorArgb) {
         FloatArray(3).also { AndroidColor.colorToHSV(initialColorArgb, it) }
     }
@@ -85,14 +86,13 @@ fun ColorPickerDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(text = title, style = MaterialTheme.typography.titleLarge)
+            Text(text = resolvedTitle, style = MaterialTheme.typography.titleLarge)
         },
         text = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Preview + Hex Field
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
@@ -121,7 +121,7 @@ fun ColorPickerDialog(
                                 }
                             }
                         },
-                        label = { Text("Hex কোড (#RRGGBB)") },
+                        label = { Text(tr("Hex Code (#RRGGBB)", "Hex কোড (#RRGGBB)")) },
                         singleLine = true,
                         modifier = Modifier
                             .weight(1f)
@@ -129,8 +129,7 @@ fun ColorPickerDialog(
                     )
                 }
 
-                // Hue Rainbow Bar + Slider
-                Text("হিউ (রঙের ধারা)", style = MaterialTheme.typography.labelMedium)
+                Text(tr("Hue", "হিউ (রঙের ধারা)"), style = MaterialTheme.typography.labelMedium)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -157,7 +156,7 @@ fun ColorPickerDialog(
                     modifier = Modifier.testTag("hue_slider")
                 )
 
-                Text("গাঢ়ত্ব (Saturation)", style = MaterialTheme.typography.labelMedium)
+                Text(tr("Saturation", "গাঢ়ত্ব (Saturation)"), style = MaterialTheme.typography.labelMedium)
                 Slider(
                     value = saturation,
                     onValueChange = { saturation = it },
@@ -165,7 +164,7 @@ fun ColorPickerDialog(
                     modifier = Modifier.testTag("saturation_slider")
                 )
 
-                Text("উজ্জ্বলতা (Brightness)", style = MaterialTheme.typography.labelMedium)
+                Text(tr("Brightness", "উজ্জ্বলতা (Brightness)"), style = MaterialTheme.typography.labelMedium)
                 Slider(
                     value = value,
                     onValueChange = { value = it },
@@ -173,7 +172,7 @@ fun ColorPickerDialog(
                     modifier = Modifier.testTag("brightness_slider")
                 )
 
-                Text("দ্রুত রঙ নির্বাচন (Swatches)", style = MaterialTheme.typography.labelMedium)
+                Text(tr("Quick Swatches", "দ্রুত রঙ নির্বাচন (Swatches)"), style = MaterialTheme.typography.labelMedium)
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -204,7 +203,7 @@ fun ColorPickerDialog(
                             if (selected) {
                                 Icon(
                                     imageVector = Icons.Default.Check,
-                                    contentDescription = "নির্বাচিত রঙ",
+                                    contentDescription = tr("Selected color", "নির্বাচিত রঙ"),
                                     tint = if (c.luminance() > 0.5f) Color.Black else Color.White,
                                     modifier = Modifier.size(18.dp)
                                 )
@@ -219,12 +218,12 @@ fun ColorPickerDialog(
                 onClick = { onColorSelected(currentColor.toArgb()) },
                 modifier = Modifier.testTag("confirm_color_button")
             ) {
-                Text("রঙ নির্বাচন করুন")
+                Text(tr("Apply Color", "রঙ নির্বাচন করুন"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("বাতিল")
+                Text(tr("Cancel", "বাতিল"))
             }
         }
     )

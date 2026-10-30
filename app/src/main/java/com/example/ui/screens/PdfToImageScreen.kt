@@ -57,6 +57,7 @@ import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.example.engine.ConvertedPageImage
 import com.example.ui.components.NokshiIcons
+import com.example.ui.i18n.tr
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -75,15 +76,19 @@ fun PdfToImageScreen(
     val context = LocalContext.current
     var highQuality by remember { mutableStateOf(true) }
     var asPng by remember { mutableStateOf(true) }
+    val shareChooserTitle = tr("Share Image", "ইমেজ শেয়ার করুন")
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Column {
-                        Text("PDF থেকে ইমেজ কনভার্টার", style = MaterialTheme.typography.titleMedium)
+                        Text(tr("PDF to Image Converter", "PDF থেকে ইমেজ কনভার্টার"), style = MaterialTheme.typography.titleMedium)
                         Text(
-                            text = "$pdfTitle • মোট ${images.size}টি পেজ ইমেজ",
+                            text = tr(
+                                "$pdfTitle • ${images.size} page images (Saves to Pictures/NokshiPDF)",
+                                "$pdfTitle • মোট ${images.size}টি পেজ ইমেজ (Pictures/NokshiPDF ফোল্ডারে সেভ হয়)"
+                            ),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -91,7 +96,7 @@ fun PdfToImageScreen(
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.testTag("pdf_to_img_back_button")) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "ফিরে যান")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = tr("Back", "ফিরে যান"))
                     }
                 }
             )
@@ -114,7 +119,12 @@ fun PdfToImageScreen(
                     ) {
                         Icon(NokshiIcons.Download, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("সবগুলো পেজ গ্যালারিতে সেভ করুন (${images.size}টি)")
+                        Text(
+                            tr(
+                                "Save All to Gallery — Pictures/NokshiPDF (${images.size})",
+                                "সবগুলো পেজ গ্যালারিতে সেভ করুন (${images.size}টি)"
+                            )
+                        )
                     }
                 }
             }
@@ -125,7 +135,6 @@ fun PdfToImageScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Quality & Format Controls
             Surface(
                 tonalElevation = 2.dp,
                 modifier = Modifier.fillMaxWidth()
@@ -160,11 +169,11 @@ fun PdfToImageScreen(
                                 highQuality = !highQuality
                                 onReconvert(highQuality, asPng)
                             },
-                            label = { Text(if (highQuality) "HD কোয়ালিটি" else "স্ট্যান্ডার্ড") }
+                            label = { Text(if (highQuality) tr("HD Quality", "HD কোয়ালিটি") else tr("Standard", "স্ট্যান্ডার্ড")) }
                         )
                     }
                     IconButton(onClick = { onReconvert(highQuality, asPng) }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "পুনরায় রেন্ডার করুন")
+                        Icon(Icons.Default.Refresh, contentDescription = tr("Re-render", "পুনরায় রেন্ডার করুন"))
                     }
                 }
             }
@@ -179,7 +188,10 @@ fun PdfToImageScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         CircularProgressIndicator()
-                        Text("PDF পেজগুলো ইমেজে কনভার্ট করা হচ্ছে...", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            tr("Converting PDF pages to images...", "PDF পেজগুলো ইমেজে কনভার্ট করা হচ্ছে..."),
+                            style = MaterialTheme.typography.titleMedium
+                        )
                     }
                 }
             } else {
@@ -207,14 +219,14 @@ fun PdfToImageScreen(
                                 ) {
                                     AsyncImage(
                                         model = File(img.filePath),
-                                        contentDescription = "পেজ ${img.pageNumber}",
+                                        contentDescription = "Page ${img.pageNumber}",
                                         contentScale = ContentScale.Fit,
                                         modifier = Modifier.fillMaxSize()
                                     )
                                 }
                                 Spacer(Modifier.height(8.dp))
                                 Text(
-                                    text = "পেজ ${img.pageNumber} • ${img.formatLabel}",
+                                    text = tr("Page ${img.pageNumber} • ${img.formatLabel}", "পেজ ${img.pageNumber} • ${img.formatLabel}"),
                                     style = MaterialTheme.typography.titleSmall
                                 )
                                 Text(
@@ -234,7 +246,7 @@ fun PdfToImageScreen(
                                     ) {
                                         Icon(NokshiIcons.Download, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(Modifier.width(4.dp))
-                                        Text("সেভ")
+                                        Text(tr("Save", "সেভ"))
                                     }
                                     IconButton(
                                         onClick = {
@@ -250,11 +262,11 @@ fun PdfToImageScreen(
                                                     putExtra(Intent.EXTRA_STREAM, uri)
                                                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                                 }
-                                                context.startActivity(Intent.createChooser(share, "ইমেজ শেয়ার করুন"))
+                                                context.startActivity(Intent.createChooser(share, shareChooserTitle))
                                             }
                                         }
                                     ) {
-                                        Icon(Icons.Default.Share, contentDescription = "শেয়ার")
+                                        Icon(Icons.Default.Share, contentDescription = tr("Share", "শেয়ার"))
                                     }
                                 }
                             }

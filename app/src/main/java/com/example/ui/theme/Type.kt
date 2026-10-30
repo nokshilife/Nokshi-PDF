@@ -7,6 +7,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.ui.i18n.AppLanguage
 
 val HindSiliguriFamily = FontFamily(
     Font(R.font.hind_siliguri, FontWeight.Normal),
@@ -53,33 +54,42 @@ val RobotoMonoFamily = FontFamily(
 )
 
 enum class AppFontStyle(
+    val titleEn: String,
     val titleBn: String,
     val sampleText: String
 ) {
     HIND_SILIGURI(
+        titleEn = "Hind Siliguri (Modern Bilingual)",
         titleBn = "হিন্দ শিলিগুড়ি (আধুনিক বাংলা)",
-        sampleText = "নকশি পিডিএফ • Nokshi PDF Studio"
-    ),
-    NOTO_SERIF_BENGALI(
-        titleBn = "নোটো সেরিফ (সাহিত্যিক ছাপা)",
-        sampleText = "নকশি পিডিএফ • Editorial Serif"
-    ),
-    ATMA_ARTISAN(
-        titleBn = "আত্মা নকশি (নান্দনিক স্টাইল)",
-        sampleText = "নকশি পিডিএফ • Artisan Handcrafted"
+        sampleText = "Nokshi PDF Studio • নকশি পিডিএফ"
     ),
     PLUS_JAKARTA(
+        titleEn = "Plus Jakarta Sans (Clean UI)",
         titleBn = "প্লাস জাকার্তা স্যান্স",
         sampleText = "Clean Geometric • আধুনিক ডকুমেন্ট"
     ),
+    NOTO_SERIF_BENGALI(
+        titleEn = "Noto Serif (Editorial Print)",
+        titleBn = "নোটো সেরিফ (সাহিত্যিক ছাপা)",
+        sampleText = "Editorial Serif • নকশি পিডিএফ"
+    ),
     LORA_EDITORIAL(
+        titleEn = "Lora Classic Book",
         titleBn = "লোরা ক্ল্যাসিক বুক",
         sampleText = "Classic Book Typography • বইয়ের ছাঁদ"
     ),
+    ATMA_ARTISAN(
+        titleEn = "Atma Nokshi (Handcrafted)",
+        titleBn = "আত্মা নকশি (নান্দনিক স্টাইল)",
+        sampleText = "Artisan Handcrafted • নকশি পিডিএফ"
+    ),
     ROBOTO_MONO(
+        titleEn = "Roboto Monospace",
         titleBn = "রোবোটো মনোস্পেস",
         sampleText = "Technical Precision • 0123456789"
     );
+
+    fun label(lang: AppLanguage): String = lang.pick(titleEn, titleBn)
 
     val displayFamily: FontFamily
         get() = when (this) {
